@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  transactions Transaction[]
+  positions    Position[]
+
+  @@map("users")
+}
+
+model Transaction {
+  id        String          @id @default(uuid())
+  userId    String          @map("user_id")
+  symbol    String
+  type      TransactionType
+  quantity  Decimal         @db.Decimal(18, 8)
+  price     Decimal         @db.Decimal(18, 8)
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, symbol])
+  @@index([userId, createdAt])
+  @@map("transactions")
+}
+
+model Position {
+  id            String  @id @default(uuid())
+  userId        String  @map("user_id")
+  symbol        String
+  totalQuantity Decimal @default(0) @map("total_quantity") @db.Decimal(18, 8)
+  averagePrice  Decimal @default(0) @map("average_price") @db.Decimal(18, 8)
+  totalInvested Decimal @default(0) @map("total_invested") @db.Decimal(18, 8)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@map("positions")
+}
+
+enum TransactionType {
+  BUY
+  SELL
+}
