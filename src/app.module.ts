@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaModule } from './database/prisma.module';
 import { UsersModule } from './modules/users/users.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
 
 @Module({
   imports: [
@@ -10,6 +11,7 @@ import { UsersModule } from './modules/users/users.module';
     EventEmitterModule.forRoot(),
     PrismaModule,
     UsersModule,
+    TransactionsModule,
   ],
 })
 export class AppModule {}
