@@ -11,24 +11,16 @@ export class TransactionCreatedListener {
   constructor(private readonly positionsService: PositionsService) {}
 
   @OnEvent(TRANSACTION_CREATED)
-  async handleTransactionCreated(
-    event: TransactionCreatedEvent,
-  ): Promise<void> {
+  async handleTransactionCreated(event: TransactionCreatedEvent): Promise<void> {
     this.logger.log(
-      `Handling transaction.created: ${event.transactionId} | ${event.type} ${event.quantity} ${event.symbol}`,
+      `Handling transaction.created: ${event.transaction.id} | ${event.transaction.type} ${event.transaction.quantity} ${event.transaction.symbol}`,
     );
 
     try {
-      await this.positionsService.recalculatePosition(
-        event.userId,
-        event.symbol,
-        event.type,
-        event.quantity,
-        event.price,
-      );
+      await this.positionsService.handleTransaction(event.transaction);
     } catch (error) {
       this.logger.error(
-        `Failed to recalculate position for transaction ${event.transactionId}: ${error.message}`,
+        `Failed to handle transaction ${event.transaction.id}: ${error.message}`,
         error.stack,
       );
       throw error;

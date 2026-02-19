@@ -15,8 +15,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  transactions Transaction[]
-  positions    Position[]
+  transactions  Transaction[]
+  positions     Position[]
+  realizedGains RealizedGain[]
 
   @@map("users")
 }
@@ -49,6 +50,22 @@ model Position {
 
   @@unique([userId, symbol])
   @@map("positions")
+}
+
+model RealizedGain {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  symbol    String
+  quantity  Decimal  @db.Decimal(18, 8)
+  sellPrice Decimal  @map("sell_price") @db.Decimal(18, 8)
+  avgPrice  Decimal  @map("avg_price") @db.Decimal(18, 8)
+  profit    Decimal  @db.Decimal(18, 8)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("realized_gains")
 }
 
 enum TransactionType {
