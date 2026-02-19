@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git -C d:/Work/Trading-app log --oneline --all)",
       "Bash(npm i:*)",
-      "Bash(nest new:*)"
+      "Bash(nest new:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
