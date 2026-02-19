@@ -5,7 +5,7 @@ import { CreateTransactionDto } from '../../common/dto/create-transaction.dto';
 import { TransactionCreatedEvent } from '../../common/events/transaction-created.event';
 import { TRANSACTION_CREATED } from '../../common/constants/event-names';
 import { Transaction } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
+import Decimal from 'decimal.js';
 
 @Injectable()
 export class TransactionsService {
@@ -27,14 +27,7 @@ export class TransactionsService {
       },
     });
 
-    const event = new TransactionCreatedEvent(
-      transaction.id,
-      transaction.userId,
-      transaction.symbol,
-      transaction.type,
-      transaction.quantity,
-      transaction.price,
-    );
+    const event = new TransactionCreatedEvent(transaction);
 
     this.logger.log(
       `Transaction created: ${transaction.id} | ${dto.type} ${dto.quantity} ${dto.symbol} @ ${dto.price}`,
