@@ -8,7 +8,6 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -17,7 +16,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { AppleAuthGuard } from './guards/apple-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { User } from '@prisma/client';
 
 const COOKIE_NAME = 'access_token';
 const COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -29,7 +27,7 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
-  private setAuthCookie(res: Response, token: string): void {
+  private setAuthCookie(res: any, token: string): void {
     res.cookie(COOKIE_NAME, token, {
       httpOnly: true,
       secure: this.config.get('NODE_ENV') === 'production',
@@ -39,7 +37,7 @@ export class AuthController {
   }
 
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: any) {
     const user = await this.authService.register(dto);
     this.setAuthCookie(res, this.authService.issueToken(user));
     const { passwordHash, ...safe } = user;
@@ -48,7 +46,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: any) {
     const user = await this.authService.login(dto);
     this.setAuthCookie(res, this.authService.issueToken(user));
     const { passwordHash, ...safe } = user;
@@ -57,7 +55,7 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  logout(@Res({ passthrough: true }) res: Response) {
+  logout(@Res({ passthrough: true }) res: any) {
     res.clearCookie(COOKIE_NAME);
     return { message: 'Logged out' };
   }
@@ -72,27 +70,27 @@ export class AuthController {
   @Get('google')
   @UseGuards(GoogleAuthGuard)
   googleLogin() {
-    // Passport redirects to Google — no body needed
+    // Passport redirects to Google
   }
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  googleCallback(@CurrentUser() user: User, @Res() res: Response) {
+  googleCallback(@CurrentUser() user: any, @Res() res: any) {
     this.setAuthCookie(res, this.authService.issueToken(user));
-    return res.redirect(this.config.get<string>('FRONTEND_URL'));
+    return res.redirect(this.config.get<string>('FRONTEND_URL') ?? '/');
   }
 
   // ── Apple OAuth ───────────────────────────────────────────
   @Get('apple')
   @UseGuards(AppleAuthGuard)
   appleLogin() {
-    // Passport redirects to Apple — no body needed
+    // Passport redirects to Apple
   }
 
   @Post('apple/callback')
   @UseGuards(AppleAuthGuard)
-  appleCallback(@CurrentUser() user: User, @Res() res: Response) {
+  appleCallback(@CurrentUser() user: any, @Res() res: any) {
     this.setAuthCookie(res, this.authService.issueToken(user));
-    return res.redirect(this.config.get<string>('FRONTEND_URL'));
+    return res.redirect(this.config.get<string>('FRONTEND_URL') ?? '/');
   }
 }

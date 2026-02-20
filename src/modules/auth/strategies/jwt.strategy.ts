@@ -15,7 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: ExtractJwt.fromExtractors([
         (req: Request) => req?.cookies?.access_token ?? null,
       ]),
-      secretOrKey: config.get<string>('JWT_SECRET'),
+      secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
       ignoreExpiration: false,
     });
   }

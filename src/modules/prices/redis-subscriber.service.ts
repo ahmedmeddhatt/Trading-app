@@ -21,14 +21,31 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     this.subscriber = new Redis(
       this.config.get<string>('REDIS_URL', 'redis://localhost:6379'),
+      {
+        maxRetriesPerRequest: null,   // don't throw on command timeout
+        enableReadyCheck: false,
+        lazyConnect: true,
+        retryStrategy: (times) => Math.min(times * 500, 10000), // cap at 10s
+      },
     );
 
-    this.subscriber.subscribe('prices', (err) => {
-      if (err) {
-        this.logger.error(`Failed to subscribe to prices channel: ${err.message}`);
-        return;
-      }
-      this.logger.log('Subscribed to Redis prices channel');
+    this.subscriber.on('error', (err) => {
+      this.logger.warn(`Redis connection error: ${err.message}`);
+    });
+
+    this.subscriber.on('connect', () => {
+      this.subscriber.subscribe('prices', (err) => {
+        if (err) {
+          this.logger.error(`Failed to subscribe to prices channel: ${err.message}`);
+          return;
+        }
+        this.logger.log('Subscribed to Redis prices channel');
+      });
+    });
+
+    // Connect explicitly (lazyConnect: true prevents auto-connect)
+    this.subscriber.connect().catch((err) => {
+      this.logger.warn(`Redis initial connect failed: ${err.message}`);
     });
 
     this.subscriber.on('message', (_channel: string, message: string) => {
