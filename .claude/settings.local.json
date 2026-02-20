@@ -6,7 +6,21 @@
       "Bash(nest new:*)",
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
-      "Bash(PORT=3001 node:*)"
+      "Bash(PORT=3001 node:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx tsc:*)",
+      "Bash(redis-cli ping:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(powershell -Command \"netstat -an | findstr :6379\")",
+      "Bash(docker ps:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker run:*)",
+      "Bash(node:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker start:*)",
+      "Bash(npm run start:dev:*)",
+      "Bash(npm run dev:*)",
+      "WebFetch(domain:www.egx.com.eg)"
     ]
   }
 }
