@@ -4,7 +4,9 @@
       "Bash(git -C d:/Work/Trading-app log --oneline --all)",
       "Bash(npm i:*)",
       "Bash(nest new:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(PORT=3001 node:*)"
     ]
   }
 }
