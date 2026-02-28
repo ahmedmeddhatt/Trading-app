@@ -5,3 +5,13 @@ dist
 output/
 *.html
 *.csv
+*.log
+coverage/
+.git
+.gitignore
+*.md
+verify-redis.ts
+*-probe.js
+eslint.config.mjs
+.prettierrc
+test/
