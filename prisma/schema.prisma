@@ -70,6 +70,33 @@ model RealizedGain {
   @@map("realized_gains")
 }
 
+model Stock {
+  symbol    String   @id
+  name      String?
+  sector    String?
+  marketCap String?  @map("market_cap")
+  pe        Decimal? @db.Decimal(10, 4)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  priceHistory StockPriceHistory[]
+
+  @@map("stocks")
+}
+
+model StockPriceHistory {
+  id            BigInt   @default(autoincrement())
+  symbol        String
+  price         Decimal  @db.Decimal(18, 8)
+  changePercent Decimal? @map("change_percent") @db.Decimal(10, 4)
+  timestamp     DateTime @default(now())
+
+  stock Stock @relation(fields: [symbol], references: [symbol])
+
+  @@id([id, timestamp])
+  @@index([symbol, timestamp])
+  @@map("stock_price_history")
+}
+
 enum TransactionType {
   BUY
   SELL

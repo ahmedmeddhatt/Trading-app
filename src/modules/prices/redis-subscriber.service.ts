@@ -19,15 +19,14 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
-    this.subscriber = new Redis(
-      this.config.get<string>('REDIS_URL', 'redis://localhost:6379'),
-      {
-        maxRetriesPerRequest: null,   // don't throw on command timeout
-        enableReadyCheck: false,
-        lazyConnect: true,
-        retryStrategy: (times) => Math.min(times * 500, 10000), // cap at 10s
-      },
-    );
+    const url = this.config.get<string>('REDIS_URL', 'redis://localhost:6379');
+    this.subscriber = new Redis(url, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true,
+      retryStrategy: (times) => Math.min(times * 500, 10000),
+      ...(url.startsWith('rediss://') && { tls: {} }),
+    });
 
     this.subscriber.on('error', (err) => {
       this.logger.warn(`Redis connection error: ${err.message}`);

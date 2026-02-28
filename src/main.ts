@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cookieParser = require('cookie-parser');
 import { AppModule } from './app.module';
@@ -8,7 +9,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const logger = new Logger('Bootstrap');
+  app.useLogger(app.get(Logger));
+  const logger = app.get(Logger);
 
   app.use(cookieParser());
 
@@ -27,6 +29,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  logger.log(`Application listening on port ${port}`);
+  logger.log(`Application listening on port ${port}`, 'Bootstrap');
 }
 bootstrap();
