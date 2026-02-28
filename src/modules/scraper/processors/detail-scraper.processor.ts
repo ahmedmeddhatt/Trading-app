@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { StockStoreService } from '../stock-store.service';
+import { StockMetadataService } from '../stock-metadata.service';
 import { StockDetails } from '../types/stock.types';
 
 chromium.use(StealthPlugin());
@@ -19,7 +20,10 @@ const USER_AGENTS = [
 export class DetailScraperProcessor extends WorkerHost {
   private readonly logger = new Logger(DetailScraperProcessor.name);
 
-  constructor(private readonly stockStore: StockStoreService) {
+  constructor(
+    private readonly stockStore: StockStoreService,
+    private readonly stockMetadata: StockMetadataService,
+  ) {
     super();
   }
 
@@ -83,6 +87,13 @@ export class DetailScraperProcessor extends WorkerHost {
 
       for (const { symbol, details } of rows) {
         await this.stockStore.saveDetails(symbol, details);
+        await this.stockMetadata.upsertStock(
+          symbol,
+          undefined,
+          details.valuation ?? undefined,
+          details.marketCap ?? undefined,
+          details.pe,
+        );
       }
 
       this.logger.log(`Details saved for ${rows.length} symbols`);

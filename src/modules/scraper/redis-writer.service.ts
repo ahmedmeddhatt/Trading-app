@@ -10,15 +10,14 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
-    this.client = new Redis(
-      this.config.get<string>('REDIS_URL', 'redis://localhost:6379'),
-      {
-        maxRetriesPerRequest: null,
-        enableReadyCheck: false,
-        lazyConnect: true,
-        retryStrategy: (times) => Math.min(times * 500, 10000),
-      },
-    );
+    const url = this.config.get<string>('REDIS_URL', 'redis://localhost:6379');
+    this.client = new Redis(url, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true,
+      retryStrategy: (times) => Math.min(times * 500, 10000),
+      ...(url.startsWith('rediss://') && { tls: {} }),
+    });
 
     this.client.on('error', (err) => {
       this.logger.warn(`Redis writer error: ${err.message}`);
@@ -43,6 +42,10 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
 
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    return this.client.hgetall(key);
   }
 
   onModuleDestroy(): void {
