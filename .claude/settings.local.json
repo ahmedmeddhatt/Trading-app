@@ -26,7 +26,8 @@
       "Bash(ss -tlnp)",
       "Bash(powershell -c \"netstat -ano | Select-String '':3000''\")",
       "Bash(npx ts-node --esm verify-redis.ts)",
-      "Bash(npx ts-node verify-redis.ts)"
+      "Bash(npx ts-node verify-redis.ts)",
+      "Bash(npx prisma generate)"
     ]
   }
 }
