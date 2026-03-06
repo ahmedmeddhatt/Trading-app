@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+output/
+*.html
+*.csv
+*.log
+coverage/
+.git
+.gitignore
+*.md
+verify-redis.ts
+*-probe.js
+eslint.config.mjs
+.prettierrc
+test/
