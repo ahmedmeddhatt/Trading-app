@@ -9,6 +9,7 @@ import { ListScraperProcessor } from './processors/list-scraper.processor';
 import { PriceScraperProcessor } from './processors/price-scraper.processor';
 import { DetailScraperProcessor } from './processors/detail-scraper.processor';
 import { ArchiverProcessor } from './processors/archiver.processor';
+import { DebugScraperProcessor } from './processors/debug-scraper.processor';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ArchiverProcessor } from './processors/archiver.processor';
       { name: 'price-scraper' },
       { name: 'detail-scraper' },
       { name: 'archiver' },
+      { name: 'debug-scraper' },
     ),
   ],
   providers: [
@@ -29,6 +31,7 @@ import { ArchiverProcessor } from './processors/archiver.processor';
     PriceScraperProcessor,
     DetailScraperProcessor,
     ArchiverProcessor,
+    DebugScraperProcessor,
   ],
 })
 export class ScraperModule {}

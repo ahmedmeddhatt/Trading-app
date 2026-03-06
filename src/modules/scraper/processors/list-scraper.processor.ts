@@ -10,6 +10,37 @@ chromium.use(StealthPlugin());
 
 const JOB_OPTS = { attempts: 3, backoff: { type: 'fixed' as const, delay: 5_000 } };
 
+const LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--single-process',
+  '--no-zygote',
+];
+
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+
+async function waitForPriceTable(page: import('playwright-extra').Page): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout: 30_000 });
+
+  const isCloudflare = await page.$('div#cf-wrapper, #challenge-form, .cf-error-type');
+  if (isCloudflare) throw new Error('CLOUDFLARE_BLOCKED: EGXpilot is serving a challenge page');
+
+  const selectors = ['table tbody tr', '#stocksTable tbody tr', '.price-table tbody tr'];
+  for (const selector of selectors) {
+    if (await page.$(selector)) return;
+  }
+
+  const tables = await page.$$eval('table', (tbls) =>
+    tbls.map((t) => ({ id: t.id, class: t.className, rows: t.rows.length })),
+  );
+  throw new Error(`NO_TABLE_FOUND: Tables on page: ${JSON.stringify(tables)}`);
+}
+
 @Processor('list-scraper')
 export class ListScraperProcessor extends WorkerHost {
   private readonly logger = new Logger(ListScraperProcessor.name);
@@ -23,15 +54,23 @@ export class ListScraperProcessor extends WorkerHost {
 
   async process(_job: Job): Promise<void> {
     this.logger.log('Fetching EGXpilot stock list');
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
 
     try {
-      const page = await browser.newPage();
+      const context = await browser.newContext({
+        userAgent: USER_AGENT,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        viewport: { width: 1280, height: 800 },
+      });
+      const page = await context.newPage();
       await page.goto('https://egxpilot.com/stocks.html', {
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded',
         timeout: 45_000,
       });
-      await page.waitForSelector('table tbody tr', { timeout: 20_000 });
+      await waitForPriceTable(page);
 
       const stocks: BaseStock[] = await page.evaluate(() => {
         const rows = Array.from(document.querySelectorAll('table tbody tr'));
