@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Page } from 'playwright-extra';
+import { Page } from 'playwright';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
