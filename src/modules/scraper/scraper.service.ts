@@ -2,7 +2,12 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
-const JOB_OPTS = { attempts: 3, backoff: { type: 'fixed' as const, delay: 5_000 } };
+const JOB_OPTS = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5_000 },
+  removeOnComplete: 10,
+  removeOnFail: 50,
+};
 
 /** Cairo time is UTC+2. Market hours: 10:00–14:30 */
 function isMarketHours(): boolean {
@@ -24,6 +29,10 @@ export class ScraperService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // Resume queues if they were auto-paused by BullMQ after repeated failures
+    await this.resumeIfPaused(this.listQueue, 'list-scraper');
+    await this.resumeIfPaused(this.priceQueue, 'price-scraper');
+
     // Daily list refresh
     await this.listQueue.add('fetch-list', {}, {
       ...JOB_OPTS,
@@ -51,5 +60,13 @@ export class ScraperService implements OnModuleInit {
     }
 
     this.logger.log('Scraper scheduled: list every 24h, prices every 30s, archiver every 1h');
+  }
+
+  private async resumeIfPaused(queue: Queue, name: string): Promise<void> {
+    const isPaused = await queue.isPaused();
+    if (isPaused) {
+      this.logger.warn(`${name} queue was paused — resuming`);
+      await queue.resume();
+    }
   }
 }

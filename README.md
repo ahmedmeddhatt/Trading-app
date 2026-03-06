@@ -1,98 +1,249 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# EGX Trading App — Backend API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-ready NestJS backend for real-time Egyptian stock exchange (EGX) data, portfolio management, and automated price archival.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Layer | Technology |
+|-------|-----------|
+| Framework | NestJS 11 + TypeScript |
+| Database | PostgreSQL (Supabase) + Prisma ORM |
+| Cache / Queue | Upstash Redis + BullMQ |
+| Scraping | Playwright (EGXpilot + SimplyWallSt) |
+| Logging | nestjs-pino (JSON → Loki-ready) |
+| Auth | JWT + Google OAuth + Apple Sign-In |
+| Container | Docker (multi-stage, Debian slim, non-root) |
 
-## Project setup
+---
 
-```bash
-$ npm install
+## Architecture
+
+```
+POST /transactions
+  └─ TransactionsModule
+       └─ emit transaction.created
+            └─ PositionsModule (listener) → recalculate position
+
+Scraper (BullMQ)
+  ├─ list-scraper   → every 24h  → EGXpilot stock list → Redis
+  ├─ price-scraper  → every 30s  → EGXpilot live prices → Redis HSET + PubSub
+  ├─ detail-scraper → on demand  → SimplyWallSt fundamentals → DB (stocks table)
+  └─ archiver       → every 1h (market hours only)
+       ├─ ensurePartitionExists(today)
+       ├─ ensurePartitionExists(today + 30d)
+       └─ HGETALL market:prices → createMany → stock_price_history (partitioned)
+
+SSE Stream
+  └─ Redis SUB prices channel → GET /api/prices?symbol=COMI → EventSource
+
+Stocks Dashboard (GET /stocks/dashboard)
+  ├─ HGETALL market:prices → hottest (top 5 |changePercent|) + lowest (top 5 by price)
+  ├─ Prisma stocks (pe ASC) → recommended (top 5 by fundamentals)
+  ├─ Redis cache 30s (cache:dashboard key)
+  └─ positions by userId → myStocks (JWT optional)
+
+Portfolio Analytics (GET /portfolio/:userId/analytics)
+  ├─ positions + realizedGains from DB
+  ├─ unrealizedPnL = (livePrice − avgPrice) × qty  [from Redis]
+  └─ graphData from stock_price_history (per symbol)
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## Database Schema
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+users               → id, email, passwordHash, googleId, appleId
+transactions        → userId, symbol, type (BUY/SELL), quantity, price
+positions           → userId, symbol, totalQuantity, averagePrice, totalInvested
+realized_gains      → userId, symbol, quantity, sellPrice, avgPrice, profit
+stocks              → symbol (PK), name, sector, marketCap, pe
+stock_price_history → (id, timestamp) composite PK — PARTITION BY RANGE (timestamp)
+  └─ stock_price_history_y2026_m02  (child partition, auto-routed by Postgres)
 ```
 
-## Run tests
+Self-healing partitions: `ArchiverProcessor` calls `ensurePartitionExists()` for the current month and 30 days ahead on every run.
 
-```bash
-# unit tests
-$ npm run test
+---
 
-# e2e tests
-$ npm run test:e2e
+## Environment Variables
 
-# test coverage
-$ npm run test:cov
+```env
+DATABASE_URL=postgresql://...          # Supabase connection string
+REDIS_URL=rediss://...                 # Upstash (rediss:// enables TLS automatically)
+JWT_SECRET=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_CALLBACK_URL=...
+APPLE_CLIENT_ID=...
+APPLE_TEAM_ID=...
+APPLE_KEY_ID=...
+APPLE_PRIVATE_KEY=...
+PORT=3000
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Local Development
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm install
+npm run dev          # watch mode
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+```bash
+# Apply DB migrations
+npx prisma migrate dev
 
-## Resources
+# Open Prisma Studio
+npx prisma studio
 
-Check out a few resources that may come in handy when working with NestJS:
+# Verify Upstash Redis connection
+npx ts-node verify-redis.ts
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+---
 
-## Support
+## Docker
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+# Build and run
+docker compose up --build
 
-## Stay in touch
+# Build image only
+docker build -t trading-app .
+docker run -p 3000:3000 --env-file .env trading-app
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+The image uses a 3-stage build (`deps → builder → runner`):
+- `deps`: prod dependencies only (`--omit=dev --ignore-scripts`)
+- `builder`: full install + `prisma generate` + `nest build`
+- `runner`: Debian slim + system Chromium + non-root user (`nestjs:1001`)
 
-## License
+---
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## API Reference
+
+### Auth
+```
+POST /auth/register     { email, password, name }
+POST /auth/login        { email, password }
+POST /auth/logout
+GET  /auth/me
+GET  /auth/google
+GET  /auth/apple
+```
+
+### Users
+```
+GET  /users
+GET  /users/:id
+POST /users
+```
+
+### Transactions
+```
+POST /transactions      { userId, symbol, type, quantity, price }
+GET  /transactions/user/:userId
+```
+
+### Positions & Portfolio
+```
+GET /positions/user/:userId
+GET /positions/user/:userId/:symbol
+GET /portfolio/:userId
+GET /portfolio/:userId/analytics
+```
+Analytics response:
+```json
+{
+  "positions": [{
+    "symbol": "COMI",
+    "totalQuantity": "10",
+    "averagePrice": "130.00",
+    "totalInvested": "1300.00",
+    "currentPrice": 138,
+    "lastPriceUpdate": "...",
+    "unrealizedPnL": "80.00",
+    "realizedPnL": "0.00",
+    "graphData": [{ "price": "130", "timestamp": "..." }]
+  }],
+  "portfolioValue": {
+    "totalInvested": "1300.00",
+    "totalRealized": "0.00",
+    "totalUnrealized": "80.00",
+    "totalPnL": "80.00"
+  }
+}
+```
+
+### Stocks
+```
+GET /stocks/dashboard               # optional JWT for myStocks
+GET /stocks?search=&sector=&minPE=&maxPE=&page=&limit=
+```
+Dashboard response:
+```json
+{
+  "hottest":     [{ "symbol", "price", "changePercent", "lastUpdate" }],
+  "recommended": [{ "symbol", "name", "sector", "marketCap", "pe", "price", "changePercent" }],
+  "lowest":      [{ "symbol", "price", "changePercent", "lastUpdate" }],
+  "myStocks":    [{ "symbol", "totalQuantity", "averagePrice", "totalInvested", "price" }]
+}
+```
+- Dashboard cached in Redis for **30 seconds**
+- `myStocks` populated only when authenticated (JWT cookie)
+
+Search response: `{ data[], total, page, limit, pages }`
+
+### Real-Time Prices (SSE)
+```
+GET /api/prices                 # all symbols
+GET /api/prices?symbol=COMI     # single symbol
+```
+```ts
+const es = new EventSource('/api/prices?symbol=COMI', { withCredentials: true });
+es.onmessage = (e) => console.log(JSON.parse(e.data)); // { symbol, price, timestamp }
+```
+
+### Health
+```
+GET /health   →  { "success": true, "data": { "status": "ok", "timestamp": "..." } }
+```
+
+---
+
+## Response Envelope
+
+All endpoints return:
+```json
+{ "success": true, "data": { ... } }
+{ "success": false, "message": "...", "statusCode": 400 }
+```
+
+---
+
+## Verification Queries (Supabase SQL Editor)
+
+```sql
+-- Confirm partition exists and is receiving data
+SELECT count(*) FROM "stock_price_history_y2026_m02";
+
+-- List all active partitions
+SELECT parent.relname, child.relname, pg_get_expr(child.relpartbound, child.oid)
+FROM pg_inherits
+JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+JOIN pg_class child  ON pg_inherits.inhrelid  = child.oid
+WHERE parent.relname = 'stock_price_history';
+
+-- Last archived price for a symbol
+SELECT * FROM stock_price_history WHERE symbol = 'COMI' ORDER BY timestamp DESC LIMIT 1;
+```
+
+---
+
+## Branch
+
+Current: `portioning-tables` | Main: `master`

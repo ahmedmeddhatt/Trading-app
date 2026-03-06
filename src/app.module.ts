@@ -12,6 +12,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { PricesModule } from './modules/prices/prices.module';
 import { ScraperModule } from './modules/scraper/scraper.module';
 import { HealthModule } from './modules/health/health.module';
+import { StocksModule } from './modules/stocks/stocks.module';
+import { RedisModule } from './common/redis/redis.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
 @Module({
@@ -28,6 +31,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
         return { connection: { url, ...(url.startsWith('rediss://') && { tls: {} }) } };
       },
     }),
+    RedisModule,
     PrismaModule,
     UsersModule,
     TransactionsModule,
@@ -37,6 +41,8 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     PricesModule,
     ScraperModule,
     HealthModule,
+    StocksModule,
+    AdminModule,
   ],
 })
 export class AppModule implements NestModule {
