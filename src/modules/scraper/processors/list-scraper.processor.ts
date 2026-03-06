@@ -116,23 +116,24 @@ export class ListScraperProcessor extends WorkerHost {
       this.logger.log('list-scraper: saved symbol list to Redis market:list');
 
       // Upsert all scraped symbols into the stocks DB table so the API
-      // returns data even before detail-scraper fills pe/marketCap
-      let upsertCount = 0;
-      for (const stock of stocks) {
-        await this.prisma.stock.upsert({
-          where: { symbol: stock.symbol },
-          update: { name: stock.name },
-          create: {
-            symbol: stock.symbol,
-            name: stock.name,
-            sector: stock.sector || 'Unknown',
-            pe: null,
-            marketCap: null,
-          },
-        });
-        upsertCount++;
-      }
-      this.logger.log(`list-scraper: upserted ${upsertCount} stocks into DB`);
+      // returns data even before detail-scraper fills pe/marketCap.
+      // Use a single $transaction to avoid exhausting the Supabase connection pool.
+      await this.prisma.$transaction(
+        stocks.map((stock) =>
+          this.prisma.stock.upsert({
+            where: { symbol: stock.symbol },
+            update: { name: stock.name },
+            create: {
+              symbol: stock.symbol,
+              name: stock.name,
+              sector: stock.sector || 'Unknown',
+              pe: null,
+              marketCap: null,
+            },
+          }),
+        ),
+      );
+      this.logger.log(`list-scraper: upserted ${stocks.length} stocks into DB`);
 
       // Single SimplyWallSt scrape for large-cap fundamentals
       await this.detailQueue.add('fetch-sws-large-cap', {}, JOB_OPTS);
