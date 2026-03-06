@@ -20,7 +20,8 @@
       "Bash(docker start:*)",
       "Bash(npm run start:dev:*)",
       "Bash(npm run dev:*)",
-      "WebFetch(domain:www.egx.com.eg)"
+      "WebFetch(domain:www.egx.com.eg)",
+      "Bash(grep -E '\"\"start:prod\"\"|\"\"build\"\"' package.json)"
     ]
   }
 }
