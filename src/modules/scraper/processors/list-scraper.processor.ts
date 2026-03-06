@@ -24,7 +24,7 @@ const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
-async function waitForPriceTable(page: import('playwright-extra').Page): Promise<void> {
+async function waitForPriceTable(page: import('playwright').Page): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: 30_000 });
 
   const isCloudflare = await page.$('div#cf-wrapper, #challenge-form, .cf-error-type');
