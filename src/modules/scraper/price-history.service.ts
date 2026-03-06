@@ -36,12 +36,21 @@ export class PriceHistoryService {
 
     if (records.length === 0) return;
 
+    const existingSymbols = await this.prisma.stock.findMany({ select: { symbol: true } });
+    const validSymbols = new Set(existingSymbols.map((s) => s.symbol));
+    const validRecords = records.filter((r) => validSymbols.has(r.symbol));
+
+    if (validRecords.length === 0) {
+      this.logger.warn('Archiver: no valid symbols to archive (stocks table may be empty)');
+      return;
+    }
+
     await this.prisma.stockPriceHistory.createMany({
-      data: records,
+      data: validRecords,
       skipDuplicates: true,
     });
 
-    this.logger.log(`Archived ${records.length} price snapshots`);
+    this.logger.log(`Archived ${validRecords.length} price snapshots (${records.length - validRecords.length} skipped — not in stocks table)`);
   }
 
   async getPriceAtTimestamp(symbol: string, date: Date) {

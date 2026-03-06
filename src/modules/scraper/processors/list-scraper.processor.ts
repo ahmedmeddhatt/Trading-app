@@ -5,6 +5,7 @@ import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { StockStoreService } from '../stock-store.service';
 import { BaseStock } from '../types/stock.types';
+import { PrismaService } from '../../../database/prisma.service';
 
 chromium.use(StealthPlugin());
 
@@ -47,14 +48,28 @@ export class ListScraperProcessor extends WorkerHost {
 
   constructor(
     private readonly stockStore: StockStoreService,
+    private readonly prisma: PrismaService,
     @InjectQueue('detail-scraper') private readonly detailQueue: Queue,
   ) {
     super();
   }
 
   async process(_job: Job): Promise<void> {
-    this.logger.log('Fetching EGXpilot stock list');
-    const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+    this.logger.log('list-scraper: job started');
+
+    this.logger.log('list-scraper: launching Playwright browser...');
+    let browser: import('playwright').Browser;
+    try {
+      browser = await chromium.launch({
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+        headless: true,
+        args: LAUNCH_ARGS,
+      });
+      this.logger.log('list-scraper: browser launched successfully');
+    } catch (err) {
+      this.logger.error({ event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack }, 'list-scraper: BROWSER LAUNCH FAILED — is Chromium installed?');
+      throw err;
+    }
 
     try {
       const context = await browser.newContext({
@@ -66,10 +81,12 @@ export class ListScraperProcessor extends WorkerHost {
         viewport: { width: 1280, height: 800 },
       });
       const page = await context.newPage();
+      this.logger.log('list-scraper: navigating to EGXpilot...');
       await page.goto('https://egxpilot.com/stocks.html', {
         waitUntil: 'domcontentloaded',
         timeout: 45_000,
       });
+      this.logger.log(`list-scraper: page loaded, title="${await page.title()}"`);
       await waitForPriceTable(page);
 
       const stocks: BaseStock[] = await page.evaluate(() => {
@@ -94,14 +111,34 @@ export class ListScraperProcessor extends WorkerHost {
         return result;
       });
 
-      this.logger.log(`Scraped ${stocks.length} stocks from EGXpilot`);
+      this.logger.log(`list-scraper: scraped ${stocks.length} stocks from EGXpilot`);
       await this.stockStore.saveList(stocks);
+      this.logger.log('list-scraper: saved symbol list to Redis market:list');
+
+      // Upsert all scraped symbols into the stocks DB table so the API
+      // returns data even before detail-scraper fills pe/marketCap
+      let upsertCount = 0;
+      for (const stock of stocks) {
+        await this.prisma.stock.upsert({
+          where: { symbol: stock.symbol },
+          update: { name: stock.name },
+          create: {
+            symbol: stock.symbol,
+            name: stock.name,
+            sector: stock.sector || 'Unknown',
+            pe: null,
+            marketCap: null,
+          },
+        });
+        upsertCount++;
+      }
+      this.logger.log(`list-scraper: upserted ${upsertCount} stocks into DB`);
 
       // Single SimplyWallSt scrape for large-cap fundamentals
       await this.detailQueue.add('fetch-sws-large-cap', {}, JOB_OPTS);
       this.logger.log('Enqueued SimplyWallSt large-cap detail scrape');
     } catch (err) {
-      this.logger.error(`List scrape failed: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error({ event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack }, 'Scraper job failed');
       throw err;
     } finally {
       await browser.close();

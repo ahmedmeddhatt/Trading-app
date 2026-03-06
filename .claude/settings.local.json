@@ -28,7 +28,10 @@
       "Bash(npx ts-node --esm verify-redis.ts)",
       "Bash(npx ts-node verify-redis.ts)",
       "Bash(npx prisma generate)",
-      "Bash(npx ts-node -e \":*)"
+      "Bash(npx ts-node -e \":*)",
+      "Bash(npx jest --coverage --testPathPattern=\"src/modules\" --forceExit)",
+      "Bash(npx jest --coverage --forceExit)",
+      "Bash(npx jest --forceExit)"
     ]
   }
 }
