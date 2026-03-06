@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { ListScraperProcessor } from './processors/list-scraper.processor';
+import { PriceScraperProcessor } from './processors/price-scraper.processor';
 
 const JOB_OPTS = {
   attempts: 3,
@@ -26,9 +28,14 @@ export class ScraperService implements OnModuleInit {
     @InjectQueue('list-scraper') private readonly listQueue: Queue,
     @InjectQueue('price-scraper') private readonly priceQueue: Queue,
     @InjectQueue('archiver') private readonly archiverQueue: Queue,
+    private readonly listScraperProcessor: ListScraperProcessor,
+    private readonly priceScraperProcessor: PriceScraperProcessor,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const redisUrl = process.env.REDIS_URL ?? '';
+    this.logger.log(`Redis protocol: ${redisUrl.split('://')[0] || 'NOT SET'}`);
+
     // Resume queues if they were auto-paused by BullMQ after repeated failures
     await this.resumeIfPaused(this.listQueue, 'list-scraper');
     await this.resumeIfPaused(this.priceQueue, 'price-scraper');
@@ -39,8 +46,15 @@ export class ScraperService implements OnModuleInit {
       repeat: { every: 24 * 60 * 60 * 1_000 },
     });
 
-    // Immediate first run for list
+    // Immediate first run for list (queued)
     await this.listQueue.add('fetch-list-boot', {}, JOB_OPTS);
+    this.logger.log('Boot list-scrape job enqueued — waiting for processor to pick up');
+
+    // Log queue states for visibility
+    const listWaiting = await this.listQueue.getWaitingCount();
+    const listActive = await this.listQueue.getActiveCount();
+    const listFailed = await this.listQueue.getFailedCount();
+    this.logger.log(`list-scraper queue on boot: waiting=${listWaiting} active=${listActive} failed=${listFailed}`);
 
     // Price poll every 30 seconds
     await this.priceQueue.add('poll-prices', {}, {
@@ -60,6 +74,23 @@ export class ScraperService implements OnModuleInit {
     }
 
     this.logger.log('Scraper scheduled: list every 24h, prices every 30s, archiver every 1h');
+
+    // Direct boot scrape — bypasses queue, runs synchronously once on startup
+    try {
+      this.logger.log('Running direct boot list scrape...');
+      await this.listScraperProcessor.process({ id: 'boot-direct' } as any);
+      this.logger.log('Direct boot list scrape completed');
+    } catch (err) {
+      this.logger.error({ error: (err as Error).message }, 'Direct boot list scrape failed');
+    }
+
+    try {
+      this.logger.log('Running direct boot price scrape...');
+      await this.priceScraperProcessor.process({ id: 'boot-price' } as any);
+      this.logger.log('Direct boot price scrape completed');
+    } catch (err) {
+      this.logger.error({ error: (err as Error).message }, 'Direct boot price scrape failed');
+    }
   }
 
   private async resumeIfPaused(queue: Queue, name: string): Promise<void> {

@@ -64,69 +64,90 @@ export class PriceScraperProcessor extends WorkerHost {
   }
 
   async process(_job: Job): Promise<void> {
-    const existingList = await this.stockStore.getList();
-    if (existingList.length === 0) {
-      this.logger.warn('No stock list in Redis — skipping price scrape (waiting for list-scraper)');
-      return;
-    }
-
-    this.logger.log('Re-scraping EGXpilot for live prices');
-    const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
-    let updated = 0;
-
+    this.logger.log('price-scraper: job started');
     try {
-      const context = await browser.newContext({
-        userAgent: USER_AGENT,
-        extraHTTPHeaders: {
-          'Accept-Language': 'en-US,en;q=0.9',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        viewport: { width: 1280, height: 800 },
-      });
-
-      const page = await context.newPage();
-      await page.goto('https://egxpilot.com/stocks.html', {
-        waitUntil: 'domcontentloaded',
-        timeout: 45_000,
-      });
-      await waitForPriceTable(page);
-
-      const priceMap: Record<string, { price: number; changePercent: number }> = await page.evaluate(() => {
-        const result: Record<string, { price: number; changePercent: number }> = {};
-        document.querySelectorAll('table tbody tr').forEach((tr) => {
-          const cells = tr.querySelectorAll('td');
-          if (cells.length < 3) return;
-          const symbol = cells[0]?.textContent?.trim() ?? '';
-          const price = parseFloat((cells[1]?.textContent?.trim() ?? '').replace(/,/g, ''));
-          const changePercent = parseFloat((cells[2]?.textContent?.trim() ?? '').replace('%', ''));
-          if (symbol && !isNaN(price)) {
-            result[symbol] = { price, changePercent: isNaN(changePercent) ? 0 : changePercent };
-          }
-        });
-        return result;
-      });
-
-      const timestamp = new Date().toISOString();
-
-      for (const [symbol, data] of Object.entries(priceMap)) {
-        const prevPrice = await this.stockStore.getPrevPrice(symbol);
-        const trending = prevPrice !== null ? Math.abs((data.price - prevPrice) / prevPrice) > 0.03 : false;
-
-        const payload = JSON.stringify({ price: data.price, changePercent: data.changePercent, trending, timestamp });
-        await this.redisWriter.hset(symbol, payload);
-        await this.redisWriter.publish('prices', JSON.stringify({ symbol, price: data.price, timestamp }));
-        await this.stockStore.savePriceData(symbol, data.price, data.changePercent, []);
-        await this.stockStore.savePrevPrice(symbol, data.price);
-        updated++;
+      const existingList = await this.stockStore.getList();
+      if (existingList.length === 0) {
+        this.logger.warn('price-scraper: market:list is empty — skipping. Run list-scraper first.');
+        return;
       }
-    } finally {
-      await browser.close();
+      this.logger.log(`price-scraper: got ${existingList.length} symbols from market:list`);
+
+      this.logger.log('price-scraper: launching Playwright browser...');
+      const browser = await chromium.launch({
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+        headless: true,
+        args: LAUNCH_ARGS,
+      });
+      this.logger.log('price-scraper: browser launched');
+      let updated = 0;
+
+      try {
+        const context = await browser.newContext({
+          userAgent: USER_AGENT,
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          viewport: { width: 1280, height: 800 },
+        });
+
+        const page = await context.newPage();
+        this.logger.log('price-scraper: navigating to EGXpilot...');
+        await page.goto('https://egxpilot.com/stocks.html', {
+          waitUntil: 'domcontentloaded',
+          timeout: 45_000,
+        });
+        this.logger.log(`price-scraper: page loaded, title="${await page.title()}"`);
+        await waitForPriceTable(page);
+
+        const priceMap: Record<string, { price: number; changePercent: number }> = await page.evaluate(() => {
+          const result: Record<string, { price: number; changePercent: number }> = {};
+          document.querySelectorAll('table tbody tr').forEach((tr) => {
+            const cells = tr.querySelectorAll('td');
+            if (cells.length < 3) return;
+            const symbol = cells[0]?.textContent?.trim() ?? '';
+            const price = parseFloat((cells[1]?.textContent?.trim() ?? '').replace(/,/g, ''));
+            const changePercent = parseFloat((cells[2]?.textContent?.trim() ?? '').replace('%', ''));
+            if (symbol && !isNaN(price)) {
+              result[symbol] = { price, changePercent: isNaN(changePercent) ? 0 : changePercent };
+            }
+          });
+          return result;
+        });
+
+        const timestamp = new Date().toISOString();
+
+        for (const [symbol, data] of Object.entries(priceMap)) {
+          const prevPrice = await this.stockStore.getPrevPrice(symbol);
+          const trending = prevPrice !== null ? Math.abs((data.price - prevPrice) / prevPrice) > 0.03 : false;
+
+          const payload = JSON.stringify({ price: data.price, changePercent: data.changePercent, trending, timestamp });
+          await this.redisWriter.hset(symbol, payload);
+          await this.redisWriter.publish('prices', JSON.stringify({ symbol, price: data.price, timestamp }));
+          await this.stockStore.savePriceData(symbol, data.price, data.changePercent, []);
+          await this.stockStore.savePrevPrice(symbol, data.price);
+          updated++;
+        }
+
+        this.logger.log(`price-scraper: wrote ${updated} prices to market:prices`);
+      } finally {
+        await browser.close();
+      }
+
+      const records = await this.stockStore.buildOutput();
+      this.stockStore.writeFiles(records);
+
+      this.eventEmitter.emit(PRICES_UPDATED, { count: updated, total: existingList.length });
+      this.logger.log(`Price update complete — ${updated} symbols updated`);
+    } catch (error) {
+      this.logger.error({
+        event: 'SCRAPER_FAILED',
+        processor: 'price-scraper',
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      }, 'Scraper job failed');
+      throw error;
     }
-
-    const records = await this.stockStore.buildOutput();
-    this.stockStore.writeFiles(records);
-
-    this.eventEmitter.emit(PRICES_UPDATED, { count: updated, total: existingList.length });
-    this.logger.log(`Price update complete — ${updated} symbols updated`);
   }
 }

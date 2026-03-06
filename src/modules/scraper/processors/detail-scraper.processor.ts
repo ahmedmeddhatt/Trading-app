@@ -9,6 +9,16 @@ import { StockDetails } from '../types/stock.types';
 
 chromium.use(StealthPlugin());
 
+const LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--single-process',
+  '--no-zygote',
+];
+
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
@@ -30,11 +40,18 @@ export class DetailScraperProcessor extends WorkerHost {
   // Single job scrapes the SimplyWallSt large-cap list page for all EG stocks
   async process(_job: Job): Promise<void> {
     const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
 
     try {
-      const page = await browser.newPage();
-      await page.setExtraHTTPHeaders({ 'User-Agent': ua });
+      const context = await browser.newContext({
+        userAgent: ua,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        viewport: { width: 1280, height: 800 },
+      });
+      const page = await context.newPage();
 
       await page.goto('https://simplywall.st/stocks/eg/market-cap-large', {
         waitUntil: 'networkidle',
