@@ -1,229 +1,249 @@
-# Trading App — Backend API
+# EGX Trading App — Backend API
 
-NestJS + Supabase PostgreSQL + Upstash Redis + BullMQ
+A production-ready NestJS backend for real-time Egyptian stock exchange (EGX) data, portfolio management, and automated price archival.
 
 ---
 
 ## Stack
 
-| Layer | Tech |
-|---|---|
-| Framework | NestJS (modular monolith, event-driven) |
-| ORM | Prisma 5.22 (requires Node ≥ 20.15, < 20.19) |
-| Database | Supabase PostgreSQL |
-| Cache / Pub-Sub | Upstash Redis (TLS `rediss://`) |
-| Job Queues | BullMQ → local Redis (`redis://`) |
-| Events | `@nestjs/event-emitter` |
-| Auth | JWT (httpOnly cookie) + Google OAuth + Apple OAuth |
-| Scraper | EGXpilot HTTP API + SimplyWallSt (Playwright, detail only) |
-
----
-
-## Setup
-
-```bash
-npm install
-
-# copy and fill in env values
-cp .env.example .env
-
-# generate Prisma client + run migrations
-npx prisma generate
-npx prisma migrate dev
-
-# start dev server
-npm run dev
-```
-
----
-
-## Local Development (Docker)
-
-A `docker-compose.yml` is included for running a local Postgres instance when Supabase is unavailable.
-
-```bash
-# start local Postgres on port 5433
-docker compose up -d
-
-# use local DB (override DATABASE_URL in .env)
-DATABASE_URL="postgresql://trading:trading@localhost:5433/trading_dev"
-DIRECT_URL="postgresql://trading:trading@localhost:5433/trading_dev"
-```
-
-> Local Redis must already be running on port 6379 for BullMQ queues.
-
----
-
-## Environment Variables
-
-```env
-# Supabase — transaction pooler (runtime queries)
-DATABASE_URL="postgresql://postgres.<ref>:<password>@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
-
-# Supabase — session pooler (migrations / schema changes)
-DIRECT_URL="postgresql://postgres.<ref>:<password>@aws-1-eu-west-1.pooler.supabase.com:5432/postgres"
-
-# Auth
-JWT_SECRET=<strong-random-secret>
-JWT_EXPIRES_IN=7d
-
-# Google OAuth
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
-
-# Apple OAuth
-APPLE_CLIENT_ID=
-APPLE_TEAM_ID=
-APPLE_KEY_ID=
-APPLE_PRIVATE_KEY_PATH=./secrets/AuthKey.p8
-APPLE_CALLBACK_URL=http://localhost:3000/auth/apple/callback
-
-# Upstash Redis — SSE price stream + stock data cache (must use rediss://)
-UPSTASH_REDIS_URL=rediss://default:<token>@<host>.upstash.io:6379
-
-# Local Redis — BullMQ queues (must be separate from Upstash)
-BULL_REDIS_URL=redis://localhost:6379
-
-FRONTEND_URL=http://localhost:3000
-```
-
-> **Special chars in password:** URL-encode them — `@` → `%40`
-
----
-
-## API Endpoints
-
-### Auth
-| Method | Path | Guard | Description |
-|---|---|---|---|
-| POST | `/auth/register` | — | Register `{ email, name, password }` → sets cookie |
-| POST | `/auth/login` | — | Login `{ email, password }` → sets cookie |
-| POST | `/auth/logout` | — | Clears `access_token` cookie |
-| GET | `/auth/me` | JWT | Returns current user |
-| GET | `/auth/google` | — | Redirects to Google OAuth |
-| GET | `/auth/google/callback` | — | Google OAuth callback |
-| GET | `/auth/apple` | — | Redirects to Apple OAuth |
-| POST | `/auth/apple/callback` | — | Apple OAuth callback |
-
-### Users
-| Method | Path | Description |
-|---|---|---|
-| GET | `/users` | List all users (passwordHash stripped) |
-| POST | `/users` | Create user `{ email, name, password? }` |
-| GET | `/users/:id` | Get user by ID |
-
-### Health
-| Method | Path | Guard | Description |
-|---|---|---|---|
-| GET | `/health` | — | App status + `{ isOpen, label, nextOpenMs }` market status |
-
-### Transactions
-| Method | Path | Description |
-|---|---|---|
-| POST | `/transactions` | `{ userId, symbol, type: BUY\|SELL, quantity, price, fees? }` |
-| GET | `/transactions/user/:userId` | Transaction history (newest first) |
-
-### Positions
-| Method | Path | Description |
-|---|---|---|
-| GET | `/positions/user/:userId` | All open positions |
-| GET | `/positions/user/:userId/:symbol` | Single position |
-
-### Portfolio
-| Method | Path | Query Params | Description |
-|---|---|---|---|
-| GET | `/portfolio/:userId` | — | Summary: total invested + positions |
-| GET | `/portfolio/:userId/analytics` | — | P&L, fees, netPnL, bestDay, worstDay, avgHoldingDays, symbolsTraded |
-| GET | `/portfolio/:userId/timeline` | `from`, `to` (ISO dates) | Running portfolio value over time |
-| GET | `/portfolio/:userId/allocation` | — | Holdings split by sector and by symbol (with %) |
-| GET | `/portfolio/:userId/stock/:symbol/history` | — | Per-transaction runningQty/avgPrice + summary with unrealizedPnL |
-
-### Stocks
-| Method | Path | Query Params | Description |
-|---|---|---|---|
-| GET | `/stocks/dashboard` | — | All stocks with live prices from Redis |
-| GET | `/stocks` | `search`, `sector`, `minPE`, `maxPE`, `limit`, `page` | Filterable paginated stock list with live prices |
-| GET | `/stocks/:symbol` | — | Detail: price, changePercent, priceHistory (30d), recommendation, signals |
-| GET | `/stocks/:symbol/history` | — | Raw price history from `stock_price_history` table |
-
-### Prices (SSE)
-| Method | Path | Guard | Description |
-|---|---|---|---|
-| GET | `/api/prices` | JWT | Live price stream. Optional `?symbol=AMOC` |
+| Layer | Technology |
+|-------|-----------|
+| Framework | NestJS 11 + TypeScript |
+| Database | PostgreSQL (Supabase) + Prisma ORM |
+| Cache / Queue | Upstash Redis + BullMQ |
+| Scraping | Playwright (EGXpilot + SimplyWallSt) |
+| Logging | nestjs-pino (JSON → Loki-ready) |
+| Auth | JWT + Google OAuth + Apple Sign-In |
+| Container | Docker (multi-stage, Debian slim, non-root) |
 
 ---
 
 ## Architecture
 
-### Event Flow
 ```
 POST /transactions
-  → persist to DB
-  → emit transaction.created
-  → PositionsListener → recalculate position (prisma.$transaction)
-```
+  └─ TransactionsModule
+       └─ emit transaction.created
+            └─ PositionsModule (listener) → recalculate position
 
-### Scraper Flow
-```
-ScraperService (setInterval, checks every 60s)
-  ├─ list-scraper queue  (every 24h + boot)
-  │    → EgxpilotApiService.fetchAllStocks()   (HTTP API, retry + backoff)
-  │    → saves market:list to Redis
-  │    → upserts stocks table in DB
-  │    └─ enqueues detail-scraper job
-  │
-  ├─ price-scraper queue  (market-hours-aware interval)
-  │    Open 10:00–14:30   → every 30s
-  │    Pre-market 09–10   → every 5min
-  │    Post-market 14:30–17 → every 15min
-  │    Closed / weekend   → every 2h
-  │    → writes market:prices hash (price, changePercent, recommendation, signals)
-  │    └─ publishes to prices channel → SSE clients
-  │
-  └─ detail-scraper queue
-       → SimplyWallSt via Playwright
-       └─ saves fundamentals to Redis
+Scraper (BullMQ)
+  ├─ list-scraper   → every 24h  → EGXpilot stock list → Redis
+  ├─ price-scraper  → every 30s  → EGXpilot live prices → Redis HSET + PubSub
+  ├─ detail-scraper → on demand  → SimplyWallSt fundamentals → DB (stocks table)
+  └─ archiver       → every 1h (market hours only)
+       ├─ ensurePartitionExists(today)
+       ├─ ensurePartitionExists(today + 30d)
+       └─ HGETALL market:prices → createMany → stock_price_history (partitioned)
+
+SSE Stream
+  └─ Redis SUB prices channel → GET /api/prices?symbol=COMI → EventSource
+
+Stocks Dashboard (GET /stocks/dashboard)
+  ├─ HGETALL market:prices → hottest (top 5 |changePercent|) + lowest (top 5 by price)
+  ├─ Prisma stocks (pe ASC) → recommended (top 5 by fundamentals)
+  ├─ Redis cache 30s (cache:dashboard key)
+  └─ positions by userId → myStocks (JWT optional)
+
+Portfolio Analytics (GET /portfolio/:userId/analytics)
+  ├─ positions + realizedGains from DB
+  ├─ unrealizedPnL = (livePrice − avgPrice) × qty  [from Redis]
+  └─ graphData from stock_price_history (per symbol)
 ```
 
 ---
 
 ## Database Schema
 
-| Table | Description |
-|---|---|
-| `users` | email/password + Google/Apple OAuth IDs |
-| `transactions` | BUY/SELL records per user + symbol + `fees` |
-| `positions` | Aggregated holdings; `averagePrice` includes fees in cost basis |
-| `realized_gains` | Profit records on position close; profit net of sell fees |
-| `stocks` | EGX master data: symbol, name, sector |
-| `stock_price_history` | Historical price snapshots per symbol |
+```
+users               → id, email, passwordHash, googleId, appleId
+transactions        → userId, symbol, type (BUY/SELL), quantity, price
+positions           → userId, symbol, totalQuantity, averagePrice, totalInvested
+realized_gains      → userId, symbol, quantity, sellPrice, avgPrice, profit
+stocks              → symbol (PK), name, sector, marketCap, pe
+stock_price_history → (id, timestamp) composite PK — PARTITION BY RANGE (timestamp)
+  └─ stock_price_history_y2026_m02  (child partition, auto-routed by Postgres)
+```
 
-> Migration: `npx prisma migrate dev --name add_fees_to_transactions`
+Self-healing partitions: `ArchiverProcessor` calls `ensurePartitionExists()` for the current month and 30 days ahead on every run.
 
 ---
 
-## Key Notes
+## Environment Variables
 
-- `PrismaModule` is `@Global()` — no need to import it in feature modules
-- Financial fields use `Decimal(18,8)` — all math via `.add()/.sub()/.mul()/.div()`
-- `EgxpilotApiService` tries direct API first (with retry + backoff), falls back to allorigins proxy
-- Playwright used **only** in `detail-scraper` — EGXpilot uses plain HTTP
-- `BULL_REDIS_URL` and `UPSTASH_REDIS_URL` **must** point to different Redis instances
-- Price scraper is market-hours-aware (Cairo UTC+2, Sun–Thu); no fixed repeat job
-- `fees` default `0` — Egyptian brokerage ~0.175% of trade value (`qty × price × 0.00175`)
-- App starts even when DB is unreachable — connection errors are logged, not thrown
-- Portfolio routes (analytics, timeline, allocation) must be declared **before** `/:userId` in the controller to avoid route conflicts
+```env
+DATABASE_URL=postgresql://...          # Supabase connection string
+REDIS_URL=rediss://...                 # Upstash (rediss:// enables TLS automatically)
+JWT_SECRET=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_CALLBACK_URL=...
+APPLE_CLIENT_ID=...
+APPLE_TEAM_ID=...
+APPLE_KEY_ID=...
+APPLE_PRIVATE_KEY=...
+PORT=3000
+```
 
-## Scripts
+---
+
+## Local Development
 
 ```bash
-npm run dev           # hot-reload dev server
-npm run start:prod    # production
-npm run build         # compile TypeScript
-npm run test          # unit tests
-npm run test:e2e      # e2e tests
-npm run test:cov      # coverage report
-npx prisma studio     # browse DB in browser
-npx prisma migrate dev --name <name>   # create + apply migration
+npm install
+npm run dev          # watch mode
 ```
+
+```bash
+# Apply DB migrations
+npx prisma migrate dev
+
+# Open Prisma Studio
+npx prisma studio
+
+# Verify Upstash Redis connection
+npx ts-node verify-redis.ts
+```
+
+---
+
+## Docker
+
+```bash
+# Build and run
+docker compose up --build
+
+# Build image only
+docker build -t trading-app .
+docker run -p 3000:3000 --env-file .env trading-app
+```
+
+The image uses a 3-stage build (`deps → builder → runner`):
+- `deps`: prod dependencies only (`--omit=dev --ignore-scripts`)
+- `builder`: full install + `prisma generate` + `nest build`
+- `runner`: Debian slim + system Chromium + non-root user (`nestjs:1001`)
+
+---
+
+## API Reference
+
+### Auth
+```
+POST /auth/register     { email, password, name }
+POST /auth/login        { email, password }
+POST /auth/logout
+GET  /auth/me
+GET  /auth/google
+GET  /auth/apple
+```
+
+### Users
+```
+GET  /users
+GET  /users/:id
+POST /users
+```
+
+### Transactions
+```
+POST /transactions      { userId, symbol, type, quantity, price }
+GET  /transactions/user/:userId
+```
+
+### Positions & Portfolio
+```
+GET /positions/user/:userId
+GET /positions/user/:userId/:symbol
+GET /portfolio/:userId
+GET /portfolio/:userId/analytics
+```
+Analytics response:
+```json
+{
+  "positions": [{
+    "symbol": "COMI",
+    "totalQuantity": "10",
+    "averagePrice": "130.00",
+    "totalInvested": "1300.00",
+    "currentPrice": 138,
+    "lastPriceUpdate": "...",
+    "unrealizedPnL": "80.00",
+    "realizedPnL": "0.00",
+    "graphData": [{ "price": "130", "timestamp": "..." }]
+  }],
+  "portfolioValue": {
+    "totalInvested": "1300.00",
+    "totalRealized": "0.00",
+    "totalUnrealized": "80.00",
+    "totalPnL": "80.00"
+  }
+}
+```
+
+### Stocks
+```
+GET /stocks/dashboard               # optional JWT for myStocks
+GET /stocks?search=&sector=&minPE=&maxPE=&page=&limit=
+```
+Dashboard response:
+```json
+{
+  "hottest":     [{ "symbol", "price", "changePercent", "lastUpdate" }],
+  "recommended": [{ "symbol", "name", "sector", "marketCap", "pe", "price", "changePercent" }],
+  "lowest":      [{ "symbol", "price", "changePercent", "lastUpdate" }],
+  "myStocks":    [{ "symbol", "totalQuantity", "averagePrice", "totalInvested", "price" }]
+}
+```
+- Dashboard cached in Redis for **30 seconds**
+- `myStocks` populated only when authenticated (JWT cookie)
+
+Search response: `{ data[], total, page, limit, pages }`
+
+### Real-Time Prices (SSE)
+```
+GET /api/prices                 # all symbols
+GET /api/prices?symbol=COMI     # single symbol
+```
+```ts
+const es = new EventSource('/api/prices?symbol=COMI', { withCredentials: true });
+es.onmessage = (e) => console.log(JSON.parse(e.data)); // { symbol, price, timestamp }
+```
+
+### Health
+```
+GET /health   →  { "success": true, "data": { "status": "ok", "timestamp": "..." } }
+```
+
+---
+
+## Response Envelope
+
+All endpoints return:
+```json
+{ "success": true, "data": { ... } }
+{ "success": false, "message": "...", "statusCode": 400 }
+```
+
+---
+
+## Verification Queries (Supabase SQL Editor)
+
+```sql
+-- Confirm partition exists and is receiving data
+SELECT count(*) FROM "stock_price_history_y2026_m02";
+
+-- List all active partitions
+SELECT parent.relname, child.relname, pg_get_expr(child.relpartbound, child.oid)
+FROM pg_inherits
+JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+JOIN pg_class child  ON pg_inherits.inhrelid  = child.oid
+WHERE parent.relname = 'stock_price_history';
+
+-- Last archived price for a symbol
+SELECT * FROM stock_price_history WHERE symbol = 'COMI' ORDER BY timestamp DESC LIMIT 1;
+```
+
+---
+
+## Branch
+
+Current: `portioning-tables` | Main: `master`

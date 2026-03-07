@@ -4,40 +4,36 @@ import { ScraperService } from './scraper.service';
 import { RedisWriterService } from './redis-writer.service';
 import { RedisMonitorService } from './redis-monitor.service';
 import { StockStoreService } from './stock-store.service';
-import { EgxpilotApiService } from './services/egxpilot-api.service';
+import { StockMetadataService } from './stock-metadata.service';
+import { PriceHistoryService } from './price-history.service';
 import { ListScraperProcessor } from './processors/list-scraper.processor';
 import { PriceScraperProcessor } from './processors/price-scraper.processor';
 import { DetailScraperProcessor } from './processors/detail-scraper.processor';
-import { StocksController } from './stocks.controller';
-import { HealthController } from './health.controller';
+import { ArchiverProcessor } from './processors/archiver.processor';
+import { DebugScraperProcessor } from './processors/debug-scraper.processor';
 
 @Module({
   imports: [
     BullModule.registerQueue(
-      {
-        name: 'list-scraper',
-        defaultJobOptions: { removeOnComplete: 3, removeOnFail: 5 },
-      },
-      {
-        name: 'price-scraper',
-        defaultJobOptions: { removeOnComplete: 3, removeOnFail: 5 },
-      },
-      {
-        name: 'detail-scraper',
-        defaultJobOptions: { removeOnComplete: 3, removeOnFail: 5 },
-      },
+      { name: 'list-scraper' },
+      { name: 'price-scraper' },
+      { name: 'detail-scraper' },
+      { name: 'archiver' },
+      { name: 'debug-scraper' },
     ),
   ],
-  controllers: [StocksController, HealthController],
   providers: [
     ScraperService,
     RedisWriterService,
     RedisMonitorService,
     StockStoreService,
-    EgxpilotApiService,
+    StockMetadataService,
+    PriceHistoryService,
     ListScraperProcessor,
     PriceScraperProcessor,
     DetailScraperProcessor,
+    ArchiverProcessor,
+    DebugScraperProcessor,
   ],
   exports: [RedisWriterService],
 })

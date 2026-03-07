@@ -14,7 +14,7 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    const url = this.config.get<string>('UPSTASH_REDIS_URL', 'redis://localhost:6379');
+    const url = this.config.get<string>('REDIS_URL', 'redis://localhost:6379');
     this.client = new Redis(url, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
@@ -76,6 +76,7 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
     this.monitor.increment('GET');
     return this.client.get(key);
   }
+
 
   onModuleDestroy(): void {
     this.client.disconnect();

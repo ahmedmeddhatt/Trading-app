@@ -4,9 +4,20 @@ import { Job } from 'bullmq';
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { StockStoreService } from '../stock-store.service';
+import { StockMetadataService } from '../stock-metadata.service';
 import { StockDetails } from '../types/stock.types';
 
 chromium.use(StealthPlugin());
+
+const LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--single-process',
+  '--no-zygote',
+];
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -19,18 +30,28 @@ const USER_AGENTS = [
 export class DetailScraperProcessor extends WorkerHost {
   private readonly logger = new Logger(DetailScraperProcessor.name);
 
-  constructor(private readonly stockStore: StockStoreService) {
+  constructor(
+    private readonly stockStore: StockStoreService,
+    private readonly stockMetadata: StockMetadataService,
+  ) {
     super();
   }
 
   // Single job scrapes the SimplyWallSt large-cap list page for all EG stocks
   async process(_job: Job): Promise<void> {
     const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
 
     try {
-      const page = await browser.newPage();
-      await page.setExtraHTTPHeaders({ 'User-Agent': ua });
+      const context = await browser.newContext({
+        userAgent: ua,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        viewport: { width: 1280, height: 800 },
+      });
+      const page = await context.newPage();
 
       await page.goto('https://simplywall.st/stocks/eg/market-cap-large', {
         waitUntil: 'networkidle',
@@ -83,6 +104,13 @@ export class DetailScraperProcessor extends WorkerHost {
 
       for (const { symbol, details } of rows) {
         await this.stockStore.saveDetails(symbol, details);
+        await this.stockMetadata.upsertStock(
+          symbol,
+          undefined,
+          details.valuation ?? undefined,
+          details.marketCap ?? undefined,
+          details.pe,
+        );
       }
 
       this.logger.log(`Details saved for ${rows.length} symbols`);

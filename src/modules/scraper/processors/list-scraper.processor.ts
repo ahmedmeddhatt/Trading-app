@@ -1,19 +1,52 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PrismaService } from '../../../database/prisma.service';
 import { StockStoreService } from '../stock-store.service';
-import { EgxpilotApiService } from '../services/egxpilot-api.service';
+
+chromium.use(StealthPlugin());
 
 const JOB_OPTS = { attempts: 3, backoff: { type: 'fixed' as const, delay: 5_000 } };
 
-@Processor('list-scraper', { stalledInterval: 300_000, maxStalledCount: 1 })
+const LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--single-process',
+  '--no-zygote',
+];
+
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
+
+async function waitForPriceTable(page: import('playwright').Page): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout: 30_000 });
+
+  const isCloudflare = await page.$('div#cf-wrapper, #challenge-form, .cf-error-type');
+  if (isCloudflare) throw new Error('CLOUDFLARE_BLOCKED: EGXpilot is serving a challenge page');
+
+  const selectors = ['table tbody tr', '#stocksTable tbody tr', '.price-table tbody tr'];
+  for (const selector of selectors) {
+    if (await page.$(selector)) return;
+  }
+
+  const tables = await page.$$eval('table', (tbls) =>
+    tbls.map((t) => ({ id: t.id, class: t.className, rows: t.rows.length })),
+  );
+  throw new Error(`NO_TABLE_FOUND: Tables on page: ${JSON.stringify(tables)}`);
+}
+
+@Processor('list-scraper')
 export class ListScraperProcessor extends WorkerHost {
   private readonly logger = new Logger(ListScraperProcessor.name);
 
   constructor(
     private readonly stockStore: StockStoreService,
-    private readonly egxpilotApi: EgxpilotApiService,
     private readonly prisma: PrismaService,
     @InjectQueue('detail-scraper') private readonly detailQueue: Queue,
   ) {
@@ -21,36 +54,89 @@ export class ListScraperProcessor extends WorkerHost {
   }
 
   async process(_job: Job): Promise<void> {
-    this.logger.log('list-scraper: fetching stock list from EGXpilot API');
+    this.logger.log('list-scraper: job started');
 
-    let stocks: Awaited<ReturnType<EgxpilotApiService['fetchAllStocks']>>;
+    this.logger.log('list-scraper: launching Playwright browser...');
+    let browser: import('playwright').Browser;
     try {
-      stocks = await this.egxpilotApi.fetchAllStocks();
+      browser = await chromium.launch({
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+        headless: true,
+        args: LAUNCH_ARGS,
+      });
+      this.logger.log('list-scraper: browser launched successfully');
     } catch (err) {
-      this.logger.error(`list-scraper: API fetch failed: ${(err as Error).message}`);
+      this.logger.error(
+        { event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack },
+        'list-scraper: BROWSER LAUNCH FAILED — is Chromium installed?',
+      );
       throw err;
     }
 
-    this.logger.log(`list-scraper: received ${stocks.length} stocks from API`);
-
-    await this.stockStore.saveList(
-      stocks.map((s) => ({ symbol: s.symbol, name: s.name, sector: s.sector })),
-    );
-    this.logger.log(`list-scraper: saved ${stocks.length} symbols to market:list`);
-
-    let upsertCount = 0;
-    for (const stock of stocks) {
-      await this.prisma.stock.upsert({
-        where: { symbol: stock.symbol },
-        update: { name: stock.name, sector: stock.sector ?? 'Unknown' },
-        create: { symbol: stock.symbol, name: stock.name, sector: stock.sector ?? 'Unknown', pe: null, marketCap: null },
+    try {
+      const context = await browser.newContext({
+        userAgent: USER_AGENT,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        viewport: { width: 1280, height: 800 },
       });
-      upsertCount++;
-    }
-    this.logger.log(`list-scraper: upserted ${upsertCount} stocks into DB`);
+      const page = await context.newPage();
+      this.logger.log('list-scraper: navigating to EGXpilot...');
+      await page.goto('https://egxpilot.com/stocks.html', {
+        waitUntil: 'domcontentloaded',
+        timeout: 45_000,
+      });
+      this.logger.log(`list-scraper: page loaded, title="${await page.title()}"`);
+      await waitForPriceTable(page);
 
-    // Enqueue SimplyWallSt large-cap detail scrape
-    await this.detailQueue.add('fetch-sws-large-cap', {}, JOB_OPTS);
-    this.logger.log('Enqueued SimplyWallSt large-cap detail scrape');
+      const stocks: { symbol: string; name: string; sector: string }[] = await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('table tbody tr'));
+        const result: { symbol: string; name: string; sector: string }[] = [];
+        rows.forEach((tr) => {
+          const cells = tr.querySelectorAll('td');
+          if (cells.length < 4) return;
+          const symbol = cells[0]?.textContent?.trim() ?? '';
+          const anchor = cells[0]?.querySelector('a');
+          const name = anchor?.getAttribute('title') ?? anchor?.textContent?.trim() ?? symbol;
+          const sector = cells[7]?.textContent?.trim() ?? '';
+          if (symbol) result.push({ symbol, name, sector });
+        });
+        return result;
+      });
+
+      this.logger.log(`list-scraper: scraped ${stocks.length} stocks from EGXpilot`);
+      await this.stockStore.saveList(stocks);
+      this.logger.log('list-scraper: saved symbol list to Redis market:list');
+
+      await this.prisma.$transaction(
+        stocks.map((stock) =>
+          this.prisma.stock.upsert({
+            where: { symbol: stock.symbol },
+            update: { name: stock.name },
+            create: {
+              symbol: stock.symbol,
+              name: stock.name,
+              sector: stock.sector || 'Unknown',
+              pe: null,
+              marketCap: null,
+            },
+          }),
+        ),
+      );
+      this.logger.log(`list-scraper: upserted ${stocks.length} stocks into DB`);
+
+      await this.detailQueue.add('fetch-sws-large-cap', {}, JOB_OPTS);
+      this.logger.log('Enqueued SimplyWallSt large-cap detail scrape');
+    } catch (err) {
+      this.logger.error(
+        { event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack },
+        'Scraper job failed',
+      );
+      throw err;
+    } finally {
+      await browser!.close();
+    }
   }
 }
