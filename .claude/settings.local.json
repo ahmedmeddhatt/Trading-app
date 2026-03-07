@@ -32,7 +32,13 @@
       "Bash(npx jest --coverage --testPathPattern=\"src/modules\" --forceExit)",
       "Bash(npx jest --coverage --forceExit)",
       "Bash(npx jest --forceExit)",
-      "Bash(git -C d:/Work/Trading-app diff --name-only --diff-filter=U)"
+      "Bash(git -C d:/Work/Trading-app diff --name-only --diff-filter=U)",
+      "Bash(grep -A5 '\"\"scripts\"\"' package.json)",
+      "Bash(npx nest build)",
+      "Bash(npx nest build --verbose)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''dashboard keys:'', list\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''stocks keys:'', list\\(d.keys\\(\\)\\), ''total:'', d.get\\(''total''\\)\\)\")"
     ]
   }
 }

@@ -1,8 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { ListScraperProcessor } from './processors/list-scraper.processor';
-import { PriceScraperProcessor } from './processors/price-scraper.processor';
 
 const JOB_OPTS = {
   attempts: 3,
@@ -28,8 +26,6 @@ export class ScraperService implements OnModuleInit {
     @InjectQueue('list-scraper') private readonly listQueue: Queue,
     @InjectQueue('price-scraper') private readonly priceQueue: Queue,
     @InjectQueue('archiver') private readonly archiverQueue: Queue,
-    private readonly listScraperProcessor: ListScraperProcessor,
-    private readonly priceScraperProcessor: PriceScraperProcessor,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -68,23 +64,6 @@ export class ScraperService implements OnModuleInit {
     }
 
     this.logger.log('Scraper scheduled: list every 24h, prices every 30s, archiver every 1h');
-
-    // Direct boot scrape — bypasses queue, runs synchronously once on startup
-    try {
-      this.logger.log('Running direct boot list scrape...');
-      await this.listScraperProcessor.process({ id: 'boot-direct' } as any);
-      this.logger.log('Direct boot list scrape completed');
-    } catch (err) {
-      this.logger.error({ error: (err as Error).message }, 'Direct boot list scrape failed');
-    }
-
-    try {
-      this.logger.log('Running direct boot price scrape...');
-      await this.priceScraperProcessor.process({ id: 'boot-price' } as any);
-      this.logger.log('Direct boot price scrape completed');
-    } catch (err) {
-      this.logger.error({ error: (err as Error).message }, 'Direct boot price scrape failed');
-    }
   }
 
   private async resumeIfPaused(queue: Queue, name: string): Promise<void> {

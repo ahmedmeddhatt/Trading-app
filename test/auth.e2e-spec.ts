@@ -5,8 +5,8 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe, ConflictException, UnauthorizedException } from '@nestjs/common';
-import * as request from 'supertest';
-import * as cookieParser from 'cookie-parser';
+import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { AuthController } from '../src/modules/auth/auth.controller';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { ConfigService } from '@nestjs/config';
@@ -90,7 +90,7 @@ describe('AuthController (e2e)', () => {
         .expect(201);
 
       expect(res.headers['set-cookie']).toBeDefined();
-      const cookie = (res.headers['set-cookie'] as string[]).join('');
+      const cookie = ([res.headers['set-cookie']].flat() as string[]).join('');
       expect(cookie).toContain('access_token');
       expect(cookie).toContain('HttpOnly');
     });
@@ -150,7 +150,7 @@ describe('AuthController (e2e)', () => {
         .expect(200);
 
       expect(res.headers['set-cookie']).toBeDefined();
-      const cookie = (res.headers['set-cookie'] as string[]).join('');
+      const cookie = ([res.headers['set-cookie']].flat() as string[]).join('');
       expect(cookie).toContain('access_token');
     });
 

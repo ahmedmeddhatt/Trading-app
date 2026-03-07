@@ -105,27 +105,3 @@ enum TransactionType {
   BUY
   SELL
 }
-
-model Stock {
-  symbol    String  @id
-  name      String
-  sector    String  @default("Unknown")
-  pe        Float?
-  marketCap String?
-
-  priceHistory StockPriceHistory[]
-
-  @@map("stocks")
-}
-
-model StockPriceHistory {
-  id        String   @id @default(uuid())
-  symbol    String
-  price     Decimal  @db.Decimal(18, 8)
-  timestamp DateTime @default(now())
-
-  stock Stock @relation(fields: [symbol], references: [symbol], onDelete: Cascade)
-
-  @@index([symbol, timestamp])
-  @@map("stock_price_history")
-}

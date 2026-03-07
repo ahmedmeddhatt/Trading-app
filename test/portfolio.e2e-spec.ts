@@ -5,7 +5,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { PortfolioController } from '../src/modules/portfolio/portfolio.controller';
 import { PortfolioService } from '../src/modules/portfolio/portfolio.service';
 import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';

@@ -99,7 +99,7 @@ describe('PortfolioService', () => {
       const result = await service.getAnalytics(userId);
       const pos = result.positions[0];
       // unrealized = (60 - 50) * 10 = 100
-      expect(parseFloat(pos.unrealizedPnL)).toBeCloseTo(100, 2);
+      expect(parseFloat(pos.unrealizedPnL!)).toBeCloseTo(100, 2);
     });
 
     it('returns null unrealizedPnL when Redis has no price for symbol', async () => {

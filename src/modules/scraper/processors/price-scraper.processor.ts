@@ -26,13 +26,20 @@ const USER_AGENT =
   '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
 async function waitForPriceTable(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle', { timeout: 30_000 });
   const isCloudflare = await page.$('div#cf-wrapper, #challenge-form, .cf-error-type');
   if (isCloudflare) throw new Error('CLOUDFLARE_BLOCKED: EGXpilot is serving a challenge page');
+
+  // Actively wait for JS-rendered table rows to appear (site is a client-side SPA)
   const selectors = ['table tbody tr', '#stocksTable tbody tr', '.price-table tbody tr', '[data-testid="stock-row"]'];
   for (const selector of selectors) {
-    if (await page.$(selector)) return;
+    try {
+      await page.waitForSelector(selector, { timeout: 30_000 });
+      return;
+    } catch {
+      // try next selector
+    }
   }
+
   const tables = await page.$$eval('table', (tbls) =>
     tbls.map((t) => ({ id: t.id, class: t.className, rows: t.rows.length })),
   );
