@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ScraperService } from './scraper.service';
 import { RedisWriterService } from './redis-writer.service';
+import { RedisMonitorService } from './redis-monitor.service';
 import { StockStoreService } from './stock-store.service';
 import { StockMetadataService } from './stock-metadata.service';
 import { PriceHistoryService } from './price-history.service';
@@ -24,6 +25,7 @@ import { DebugScraperProcessor } from './processors/debug-scraper.processor';
   providers: [
     ScraperService,
     RedisWriterService,
+    RedisMonitorService,
     StockStoreService,
     StockMetadataService,
     PriceHistoryService,
@@ -33,5 +35,6 @@ import { DebugScraperProcessor } from './processors/debug-scraper.processor';
     ArchiverProcessor,
     DebugScraperProcessor,
   ],
+  exports: [RedisWriterService],
 })
 export class ScraperModule {}

@@ -3,9 +3,8 @@ import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { StockStoreService } from '../stock-store.service';
-import { BaseStock } from '../types/stock.types';
 import { PrismaService } from '../../../database/prisma.service';
+import { StockStoreService } from '../stock-store.service';
 
 chromium.use(StealthPlugin());
 
@@ -26,14 +25,18 @@ const USER_AGENT =
   '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 
 async function waitForPriceTable(page: import('playwright').Page): Promise<void> {
-  await page.waitForLoadState('networkidle', { timeout: 30_000 });
-
   const isCloudflare = await page.$('div#cf-wrapper, #challenge-form, .cf-error-type');
   if (isCloudflare) throw new Error('CLOUDFLARE_BLOCKED: EGXpilot is serving a challenge page');
 
-  const selectors = ['table tbody tr', '#stocksTable tbody tr', '.price-table tbody tr'];
+  // Actively wait for JS-rendered table rows to appear (site is a client-side SPA)
+  const selectors = ['table tbody tr', '#stocksTable tbody tr', '.price-table tbody tr', '[data-testid="stock-row"]'];
   for (const selector of selectors) {
-    if (await page.$(selector)) return;
+    try {
+      await page.waitForSelector(selector, { timeout: 30_000 });
+      return;
+    } catch {
+      // try next selector
+    }
   }
 
   const tables = await page.$$eval('table', (tbls) =>
@@ -67,7 +70,10 @@ export class ListScraperProcessor extends WorkerHost {
       });
       this.logger.log('list-scraper: browser launched successfully');
     } catch (err) {
-      this.logger.error({ event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack }, 'list-scraper: BROWSER LAUNCH FAILED — is Chromium installed?');
+      this.logger.error(
+        { event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack },
+        'list-scraper: BROWSER LAUNCH FAILED — is Chromium installed?',
+      );
       throw err;
     }
 
@@ -89,25 +95,18 @@ export class ListScraperProcessor extends WorkerHost {
       this.logger.log(`list-scraper: page loaded, title="${await page.title()}"`);
       await waitForPriceTable(page);
 
-      const stocks: BaseStock[] = await page.evaluate(() => {
+      const stocks: { symbol: string; name: string; sector: string }[] = await page.evaluate(() => {
         const rows = Array.from(document.querySelectorAll('table tbody tr'));
         const result: { symbol: string; name: string; sector: string }[] = [];
-
         rows.forEach((tr) => {
           const cells = tr.querySelectorAll('td');
           if (cells.length < 4) return;
-
           const symbol = cells[0]?.textContent?.trim() ?? '';
-          // Name may be in anchor title attr; fall back to symbol
           const anchor = cells[0]?.querySelector('a');
           const name = anchor?.getAttribute('title') ?? anchor?.textContent?.trim() ?? symbol;
           const sector = cells[7]?.textContent?.trim() ?? '';
-
-          if (symbol) {
-            result.push({ symbol, name, sector });
-          }
+          if (symbol) result.push({ symbol, name, sector });
         });
-
         return result;
       });
 
@@ -115,9 +114,6 @@ export class ListScraperProcessor extends WorkerHost {
       await this.stockStore.saveList(stocks);
       this.logger.log('list-scraper: saved symbol list to Redis market:list');
 
-      // Upsert all scraped symbols into the stocks DB table so the API
-      // returns data even before detail-scraper fills pe/marketCap.
-      // Use a single $transaction to avoid exhausting the Supabase connection pool.
       await this.prisma.$transaction(
         stocks.map((stock) =>
           this.prisma.stock.upsert({
@@ -135,14 +131,16 @@ export class ListScraperProcessor extends WorkerHost {
       );
       this.logger.log(`list-scraper: upserted ${stocks.length} stocks into DB`);
 
-      // Single SimplyWallSt scrape for large-cap fundamentals
       await this.detailQueue.add('fetch-sws-large-cap', {}, JOB_OPTS);
       this.logger.log('Enqueued SimplyWallSt large-cap detail scrape');
     } catch (err) {
-      this.logger.error({ event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack }, 'Scraper job failed');
+      this.logger.error(
+        { event: 'SCRAPER_FAILED', processor: 'list-scraper', error: (err as Error).message, stack: (err as Error).stack },
+        'Scraper job failed',
+      );
       throw err;
     } finally {
-      await browser.close();
+      await browser!.close();
     }
   }
 }

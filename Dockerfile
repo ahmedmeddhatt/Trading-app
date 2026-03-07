@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatk-bridge2.0-0 \
     libcups2 \
     libxcomposite1 \
+    libxcursor1 \
     libxdamage1 \
     libxrandr2 \
     libgbm1 \

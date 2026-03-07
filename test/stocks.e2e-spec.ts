@@ -5,7 +5,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { StocksController } from '../src/modules/stocks/stocks.controller';
 import { StocksService } from '../src/modules/stocks/stocks.service';
 import { AuthGuard } from '@nestjs/passport';

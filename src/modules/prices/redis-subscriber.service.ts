@@ -6,7 +6,14 @@ import { Subject } from 'rxjs';
 export interface PriceUpdate {
   symbol: string;
   price: number;
-  timestamp: number;
+  changePercent: number;
+  lastUpdate: string;
+  recommendation?: string | null;
+  signals?: {
+    daily: string | null;
+    weekly: string | null;
+    monthly: string | null;
+  } | null;
 }
 
 @Injectable()
@@ -33,6 +40,10 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.subscriber.on('connect', () => {
+      const url = this.config.get<string>('REDIS_URL', this.config.get<string>('UPSTASH_REDIS_URL', ''));
+      const host = url.split('@')[1]?.split(':')[0] ?? 'unknown';
+      this.logger.log(`RedisSubscriber verified — connected to host: ${host}`);
+
       this.subscriber.subscribe('prices', (err) => {
         if (err) {
           this.logger.error(`Failed to subscribe to prices channel: ${err.message}`);

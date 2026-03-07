@@ -2,8 +2,10 @@ import {
   IsEnum,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsPositive,
   IsString,
+  Min,
 } from 'class-validator';
 import { TransactionType } from '@prisma/client';
 
@@ -26,4 +28,9 @@ export class CreateTransactionDto {
   @IsNumber({ maxDecimalPlaces: 8 })
   @IsPositive()
   price: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 8 })
+  @Min(0)
+  fees?: number;
 }
