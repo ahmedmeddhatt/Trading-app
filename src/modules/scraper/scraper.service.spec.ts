@@ -11,6 +11,9 @@ function makeQueueMock() {
     isPaused: jest.fn().mockResolvedValue(false),
     resume: jest.fn().mockResolvedValue(undefined),
     add: jest.fn().mockResolvedValue({ id: 'job-1' }),
+    getWaitingCount: jest.fn().mockResolvedValue(0),
+    getActiveCount: jest.fn().mockResolvedValue(0),
+    getFailedCount: jest.fn().mockResolvedValue(0),
   };
 }
 

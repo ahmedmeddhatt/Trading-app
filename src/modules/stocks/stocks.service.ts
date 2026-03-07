@@ -133,6 +133,39 @@ export class StocksService {
     return { ...base, myStocks, pricesMeta };
   }
 
+  // ── Price History ─────────────────────────────────────────────────────────
+
+  async getHistory(symbol: string, from?: Date, to?: Date) {
+    const where: Prisma.StockPriceHistoryWhereInput = {
+      symbol,
+      ...(from || to
+        ? { timestamp: { ...(from && { gte: from }), ...(to && { lte: to }) } }
+        : {}),
+    };
+    const rows = await this.prisma.stockPriceHistory.findMany({
+      where,
+      orderBy: { timestamp: 'asc' },
+      select: { price: true, timestamp: true },
+    });
+    return rows.map((r) => ({ price: r.price.toNumber(), timestamp: r.timestamp.toISOString() }));
+  }
+
+  // ── Single stock ─────────────────────────────────────────────────────────
+
+  async getBySymbol(symbol: string) {
+    const stock = await this.prisma.stock.findUnique({ where: { symbol } });
+    if (!stock) return null;
+    const prices = await this.getAllLivePrices();
+    return {
+      symbol: stock.symbol,
+      name: stock.name,
+      sector: stock.sector,
+      marketCap: stock.marketCap,
+      pe: stock.pe?.toString() ?? null,
+      ...this.enrichWithLive(stock.symbol, prices),
+    };
+  }
+
   // ── Search / Filter ───────────────────────────────────────────────────────
 
   async searchStocks(query: StocksQueryDto) {
