@@ -19,7 +19,9 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        connection: { url: config.get<string>('REDIS_URL', 'redis://localhost:6379') },
+        connection: {
+          url: config.get<string>('BULL_REDIS_URL') ?? config.get<string>('UPSTASH_REDIS_URL', 'redis://localhost:6379'),
+        },
       }),
     }),
     PrismaModule,

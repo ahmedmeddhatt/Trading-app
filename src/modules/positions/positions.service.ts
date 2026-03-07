@@ -13,6 +13,8 @@ export class PositionsService {
     const { userId, symbol, type } = transaction;
     const qty = new Decimal(transaction.quantity.toString());
     const px = new Decimal(transaction.price.toString());
+    // fees exists after migration; fallback to 0 for safety
+    const fees = new Decimal((transaction as any).fees?.toString() ?? '0');
 
     return this.prisma.$transaction(async (tx) => {
       // Pessimistic lock: lock the row (no-op if row doesn't exist yet)
@@ -27,24 +29,27 @@ export class PositionsService {
       });
 
       if (type === TransactionType.BUY) {
+        // Include fees in totalInvested so averagePrice reflects true cost basis
+        const buyCost = qty.mul(px).add(fees);
         if (!position) {
+          const newAvg = buyCost.div(qty);
           const created = await tx.position.create({
             data: {
               userId,
               symbol,
               totalQuantity: qty.toFixed(8),
-              averagePrice: px.toFixed(8),
-              totalInvested: qty.mul(px).toFixed(8),
+              averagePrice: newAvg.toFixed(8),
+              totalInvested: buyCost.toFixed(8),
             },
           });
-          this.logger.log(`Position created: ${userId} | ${symbol} | qty=${qty} avgPrice=${px}`);
+          this.logger.log(`Position created: ${userId} | ${symbol} | qty=${qty} avgPrice=${newAvg}`);
           return created;
         }
 
         const prevQty = new Decimal(position.totalQuantity.toString());
         const prevInv = new Decimal(position.totalInvested.toString());
         const newQty = prevQty.add(qty);
-        const newInv = prevInv.add(qty.mul(px));
+        const newInv = prevInv.add(buyCost);
         const newAvg = newInv.div(newQty);
 
         const updated = await tx.position.update({
@@ -72,7 +77,8 @@ export class PositionsService {
       const avgPx = new Decimal(position.averagePrice.toString());
       const newQty = currQty.sub(qty);
       const newInv = newQty.isZero() ? new Decimal(0) : newQty.mul(avgPx);
-      const profit = px.sub(avgPx).mul(qty); // (sellPrice - avgPrice) * sellQty
+      // Subtract sell fees from profit
+      const profit = px.sub(avgPx).mul(qty).sub(fees);
 
       const [updated] = await Promise.all([
         tx.position.update({
@@ -91,6 +97,7 @@ export class PositionsService {
             sellPrice: px.toFixed(8),
             avgPrice: avgPx.toFixed(8),
             profit: profit.toFixed(8),
+            fees: fees.toFixed(8),
           },
         }),
       ]);

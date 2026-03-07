@@ -1,98 +1,229 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Trading App — Backend API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS + Supabase PostgreSQL + Upstash Redis + BullMQ
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Layer | Tech |
+|---|---|
+| Framework | NestJS (modular monolith, event-driven) |
+| ORM | Prisma 5.22 (requires Node ≥ 20.15, < 20.19) |
+| Database | Supabase PostgreSQL |
+| Cache / Pub-Sub | Upstash Redis (TLS `rediss://`) |
+| Job Queues | BullMQ → local Redis (`redis://`) |
+| Events | `@nestjs/event-emitter` |
+| Auth | JWT (httpOnly cookie) + Google OAuth + Apple OAuth |
+| Scraper | EGXpilot HTTP API + SimplyWallSt (Playwright, detail only) |
 
-## Project setup
+---
+
+## Setup
 
 ```bash
-$ npm install
+npm install
+
+# copy and fill in env values
+cp .env.example .env
+
+# generate Prisma client + run migrations
+npx prisma generate
+npx prisma migrate dev
+
+# start dev server
+npm run dev
 ```
 
-## Compile and run the project
+---
+
+## Local Development (Docker)
+
+A `docker-compose.yml` is included for running a local Postgres instance when Supabase is unavailable.
 
 ```bash
-# development
-$ npm run start
+# start local Postgres on port 5433
+docker compose up -d
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+# use local DB (override DATABASE_URL in .env)
+DATABASE_URL="postgresql://trading:trading@localhost:5433/trading_dev"
+DIRECT_URL="postgresql://trading:trading@localhost:5433/trading_dev"
 ```
 
-## Run tests
+> Local Redis must already be running on port 6379 for BullMQ queues.
+
+---
+
+## Environment Variables
+
+```env
+# Supabase — transaction pooler (runtime queries)
+DATABASE_URL="postgresql://postgres.<ref>:<password>@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+
+# Supabase — session pooler (migrations / schema changes)
+DIRECT_URL="postgresql://postgres.<ref>:<password>@aws-1-eu-west-1.pooler.supabase.com:5432/postgres"
+
+# Auth
+JWT_SECRET=<strong-random-secret>
+JWT_EXPIRES_IN=7d
+
+# Google OAuth
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
+
+# Apple OAuth
+APPLE_CLIENT_ID=
+APPLE_TEAM_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY_PATH=./secrets/AuthKey.p8
+APPLE_CALLBACK_URL=http://localhost:3000/auth/apple/callback
+
+# Upstash Redis — SSE price stream + stock data cache (must use rediss://)
+UPSTASH_REDIS_URL=rediss://default:<token>@<host>.upstash.io:6379
+
+# Local Redis — BullMQ queues (must be separate from Upstash)
+BULL_REDIS_URL=redis://localhost:6379
+
+FRONTEND_URL=http://localhost:3000
+```
+
+> **Special chars in password:** URL-encode them — `@` → `%40`
+
+---
+
+## API Endpoints
+
+### Auth
+| Method | Path | Guard | Description |
+|---|---|---|---|
+| POST | `/auth/register` | — | Register `{ email, name, password }` → sets cookie |
+| POST | `/auth/login` | — | Login `{ email, password }` → sets cookie |
+| POST | `/auth/logout` | — | Clears `access_token` cookie |
+| GET | `/auth/me` | JWT | Returns current user |
+| GET | `/auth/google` | — | Redirects to Google OAuth |
+| GET | `/auth/google/callback` | — | Google OAuth callback |
+| GET | `/auth/apple` | — | Redirects to Apple OAuth |
+| POST | `/auth/apple/callback` | — | Apple OAuth callback |
+
+### Users
+| Method | Path | Description |
+|---|---|---|
+| GET | `/users` | List all users (passwordHash stripped) |
+| POST | `/users` | Create user `{ email, name, password? }` |
+| GET | `/users/:id` | Get user by ID |
+
+### Health
+| Method | Path | Guard | Description |
+|---|---|---|---|
+| GET | `/health` | — | App status + `{ isOpen, label, nextOpenMs }` market status |
+
+### Transactions
+| Method | Path | Description |
+|---|---|---|
+| POST | `/transactions` | `{ userId, symbol, type: BUY\|SELL, quantity, price, fees? }` |
+| GET | `/transactions/user/:userId` | Transaction history (newest first) |
+
+### Positions
+| Method | Path | Description |
+|---|---|---|
+| GET | `/positions/user/:userId` | All open positions |
+| GET | `/positions/user/:userId/:symbol` | Single position |
+
+### Portfolio
+| Method | Path | Query Params | Description |
+|---|---|---|---|
+| GET | `/portfolio/:userId` | — | Summary: total invested + positions |
+| GET | `/portfolio/:userId/analytics` | — | P&L, fees, netPnL, bestDay, worstDay, avgHoldingDays, symbolsTraded |
+| GET | `/portfolio/:userId/timeline` | `from`, `to` (ISO dates) | Running portfolio value over time |
+| GET | `/portfolio/:userId/allocation` | — | Holdings split by sector and by symbol (with %) |
+| GET | `/portfolio/:userId/stock/:symbol/history` | — | Per-transaction runningQty/avgPrice + summary with unrealizedPnL |
+
+### Stocks
+| Method | Path | Query Params | Description |
+|---|---|---|---|
+| GET | `/stocks/dashboard` | — | All stocks with live prices from Redis |
+| GET | `/stocks` | `search`, `sector`, `minPE`, `maxPE`, `limit`, `page` | Filterable paginated stock list with live prices |
+| GET | `/stocks/:symbol` | — | Detail: price, changePercent, priceHistory (30d), recommendation, signals |
+| GET | `/stocks/:symbol/history` | — | Raw price history from `stock_price_history` table |
+
+### Prices (SSE)
+| Method | Path | Guard | Description |
+|---|---|---|---|
+| GET | `/api/prices` | JWT | Live price stream. Optional `?symbol=AMOC` |
+
+---
+
+## Architecture
+
+### Event Flow
+```
+POST /transactions
+  → persist to DB
+  → emit transaction.created
+  → PositionsListener → recalculate position (prisma.$transaction)
+```
+
+### Scraper Flow
+```
+ScraperService (setInterval, checks every 60s)
+  ├─ list-scraper queue  (every 24h + boot)
+  │    → EgxpilotApiService.fetchAllStocks()   (HTTP API, retry + backoff)
+  │    → saves market:list to Redis
+  │    → upserts stocks table in DB
+  │    └─ enqueues detail-scraper job
+  │
+  ├─ price-scraper queue  (market-hours-aware interval)
+  │    Open 10:00–14:30   → every 30s
+  │    Pre-market 09–10   → every 5min
+  │    Post-market 14:30–17 → every 15min
+  │    Closed / weekend   → every 2h
+  │    → writes market:prices hash (price, changePercent, recommendation, signals)
+  │    └─ publishes to prices channel → SSE clients
+  │
+  └─ detail-scraper queue
+       → SimplyWallSt via Playwright
+       └─ saves fundamentals to Redis
+```
+
+---
+
+## Database Schema
+
+| Table | Description |
+|---|---|
+| `users` | email/password + Google/Apple OAuth IDs |
+| `transactions` | BUY/SELL records per user + symbol + `fees` |
+| `positions` | Aggregated holdings; `averagePrice` includes fees in cost basis |
+| `realized_gains` | Profit records on position close; profit net of sell fees |
+| `stocks` | EGX master data: symbol, name, sector |
+| `stock_price_history` | Historical price snapshots per symbol |
+
+> Migration: `npx prisma migrate dev --name add_fees_to_transactions`
+
+---
+
+## Key Notes
+
+- `PrismaModule` is `@Global()` — no need to import it in feature modules
+- Financial fields use `Decimal(18,8)` — all math via `.add()/.sub()/.mul()/.div()`
+- `EgxpilotApiService` tries direct API first (with retry + backoff), falls back to allorigins proxy
+- Playwright used **only** in `detail-scraper` — EGXpilot uses plain HTTP
+- `BULL_REDIS_URL` and `UPSTASH_REDIS_URL` **must** point to different Redis instances
+- Price scraper is market-hours-aware (Cairo UTC+2, Sun–Thu); no fixed repeat job
+- `fees` default `0` — Egyptian brokerage ~0.175% of trade value (`qty × price × 0.00175`)
+- App starts even when DB is unreachable — connection errors are logged, not thrown
+- Portfolio routes (analytics, timeline, allocation) must be declared **before** `/:userId` in the controller to avoid route conflicts
+
+## Scripts
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run dev           # hot-reload dev server
+npm run start:prod    # production
+npm run build         # compile TypeScript
+npm run test          # unit tests
+npm run test:e2e      # e2e tests
+npm run test:cov      # coverage report
+npx prisma studio     # browse DB in browser
+npx prisma migrate dev --name <name>   # create + apply migration
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).

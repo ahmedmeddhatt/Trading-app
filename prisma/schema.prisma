@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -31,6 +32,7 @@ model Transaction {
   type      TransactionType
   quantity  Decimal         @db.Decimal(18, 8)
   price     Decimal         @db.Decimal(18, 8)
+  fees      Decimal         @default(0) @db.Decimal(18, 8)
   createdAt DateTime        @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -62,6 +64,7 @@ model RealizedGain {
   sellPrice Decimal  @map("sell_price") @db.Decimal(18, 8)
   avgPrice  Decimal  @map("avg_price") @db.Decimal(18, 8)
   profit    Decimal  @db.Decimal(18, 8)
+  fees      Decimal  @default(0) @db.Decimal(18, 8)
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -73,4 +76,28 @@ model RealizedGain {
 enum TransactionType {
   BUY
   SELL
+}
+
+model Stock {
+  symbol    String  @id
+  name      String
+  sector    String  @default("Unknown")
+  pe        Float?
+  marketCap String?
+
+  priceHistory StockPriceHistory[]
+
+  @@map("stocks")
+}
+
+model StockPriceHistory {
+  id        String   @id @default(uuid())
+  symbol    String
+  price     Decimal  @db.Decimal(18, 8)
+  timestamp DateTime @default(now())
+
+  stock Stock @relation(fields: [symbol], references: [symbol], onDelete: Cascade)
+
+  @@index([symbol, timestamp])
+  @@map("stock_price_history")
 }

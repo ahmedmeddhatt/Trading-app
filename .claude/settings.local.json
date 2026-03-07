@@ -21,7 +21,30 @@
       "Bash(npm run start:dev:*)",
       "Bash(npm run dev:*)",
       "WebFetch(domain:www.egx.com.eg)",
-      "Bash(grep -E '\"\"start:prod\"\"|\"\"build\"\"' package.json)"
+      "Bash(grep -E '\"\"start:prod\"\"|\"\"build\"\"' package.json)",
+      "Bash(docker container ls)",
+      "Bash(npx prisma generate)",
+      "Bash(BASE=http://localhost:3000)",
+      "Bash(__NEW_LINE_c1fba202d64f4adb__ echo \"=== GET /health ===\")",
+      "Bash(python -m json.tool)",
+      "Read(//d/Work/Trading-app/=== GET /stocks/**)",
+      "Bash(python -m json.tool echo \"\" echo \"=== GET /stocks?search=AM ===\" curl -s \"$BASE/stocks?search=AM&limit=2\")",
+      "Read(//d/Work/Trading-app/=== GET /stocks/AMOC/**)",
+      "Read(//d/Work/Trading-app/=== GET /portfolio/**)",
+      "Bash(__NEW_LINE_21d558e77151d534__ echo \"=== GET /health ===\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''keys:'', list\\(d.get\\(''data'',d\\).keys\\(\\)\\) if isinstance\\(d.get\\(''data'',d\\),dict\\) else type\\(d.get\\(''data'',d\\)\\).__name__\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); dk=d.get\\(''data'',d\\); print\\(''top-level:'', list\\(dk.keys\\(\\)\\) if isinstance\\(dk,dict\\) else type\\(dk\\).__name__\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(npm run --prefix d:/Work/Trading-app)",
+      "Bash(ss -tlnp)",
+      "Bash(cmd.exe /c \"netstat -an | findstr :3000\")",
+      "Bash(powershell.exe -Command \"netstat -an | Select-String '':3000''\")",
+      "Bash(powershell.exe -Command \"Test-NetConnection -ComputerName localhost -Port 3000\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(__NEW_LINE_915abac732f41694__ echo \"=== GET /health ===\")",
+      "Bash(wc -c \"C:/Users/DELL/AppData/Local/Temp/claude/d--Work-Trading-app/tasks/\"*.output)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(npx prisma migrate dev --name add_stock_price_history)"
     ]
   }
 }

@@ -2,14 +2,12 @@ import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { chromium } from 'playwright-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { StockStoreService } from '../stock-store.service';
 import { RedisWriterService } from '../redis-writer.service';
+import { EgxpilotApiService } from '../services/egxpilot-api.service';
 import { PRICES_UPDATED } from '../../../common/constants/event-names';
-chromium.use(StealthPlugin());
 
-@Processor('price-scraper')
+@Processor('price-scraper', { stalledInterval: 300_000, maxStalledCount: 1 })
 export class PriceScraperProcessor extends WorkerHost {
   private readonly logger = new Logger(PriceScraperProcessor.name);
 
@@ -17,6 +15,7 @@ export class PriceScraperProcessor extends WorkerHost {
     private readonly stockStore: StockStoreService,
     private readonly redisWriter: RedisWriterService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly egxpilotApi: EgxpilotApiService,
   ) {
     super();
   }
@@ -28,55 +27,47 @@ export class PriceScraperProcessor extends WorkerHost {
       return;
     }
 
-    this.logger.log('Re-scraping EGXpilot for live prices');
-    const browser = await chromium.launch({ headless: true });
+    this.logger.log('price-scraper: fetching live prices from EGXpilot API');
+    const stocks = await this.egxpilotApi.fetchAllStocks();
+    this.logger.log(`price-scraper: received ${stocks.length} prices`);
+
     let updated = 0;
+    for (const stock of stocks) {
+      const prevPrice = await this.stockStore.getPrevPrice(stock.symbol);
+      const trending =
+        prevPrice !== null ? Math.abs((stock.price - prevPrice) / prevPrice) > 0.03 : false;
 
-    try {
-      const page = await browser.newPage();
-      await page.goto('https://egxpilot.com/stocks.html', {
-        waitUntil: 'networkidle',
-        timeout: 45_000,
-      });
-      await page.waitForSelector('table tbody tr', { timeout: 20_000 });
-
-      // Scrape all prices in one page load
-      const priceMap: Record<string, { price: number; changePercent: number }> = await page.evaluate(() => {
-        const result: Record<string, { price: number; changePercent: number }> = {};
-        document.querySelectorAll('table tbody tr').forEach((tr) => {
-          const cells = tr.querySelectorAll('td');
-          if (cells.length < 3) return;
-          const symbol = cells[0]?.textContent?.trim() ?? '';
-          const price = parseFloat((cells[1]?.textContent?.trim() ?? '').replace(/,/g, ''));
-          const changePercent = parseFloat((cells[2]?.textContent?.trim() ?? '').replace('%', ''));
-          if (symbol && !isNaN(price)) {
-            result[symbol] = { price, changePercent: isNaN(changePercent) ? 0 : changePercent };
-          }
-        });
-        return result;
+      const now = Date.now();
+      const payload = JSON.stringify({
+        price: stock.price,
+        changePercent: stock.changePercent,
+        trending,
+        timestamp: now,
+        recommendation: stock.recommendation ?? null,
+        signals: stock.signals ?? { daily: null, weekly: null, monthly: null },
       });
 
-      const timestamp = Date.now();
-
-      for (const [symbol, data] of Object.entries(priceMap)) {
-        const prevPrice = await this.stockStore.getPrevPrice(symbol);
-        const trending = prevPrice !== null ? Math.abs((data.price - prevPrice) / prevPrice) > 0.03 : false;
-
-        const payload = JSON.stringify({ price: data.price, changePercent: data.changePercent, trending, timestamp });
-        await this.redisWriter.hset(symbol, payload);
-        await this.redisWriter.publish('prices', JSON.stringify({ symbol, price: data.price, timestamp }));
-        await this.stockStore.savePriceData(symbol, data.price, data.changePercent, []);
-        await this.stockStore.savePrevPrice(symbol, data.price);
-        updated++;
-      }
-    } finally {
-      await browser.close();
+      await this.redisWriter.hset(stock.symbol, payload);
+      await this.redisWriter.publish(
+        'prices',
+        JSON.stringify({
+          symbol: stock.symbol,
+          price: stock.price,
+          changePercent: stock.changePercent,
+          lastUpdate: new Date(now).toISOString(),
+          recommendation: stock.recommendation ?? null,
+          signals: stock.signals ?? { daily: null, weekly: null, monthly: null },
+        }),
+      );
+      await this.stockStore.savePriceData(stock.symbol, stock.price, stock.changePercent, []);
+      await this.stockStore.savePrevPrice(stock.symbol, stock.price);
+      updated++;
     }
 
     const records = await this.stockStore.buildOutput();
     this.stockStore.writeFiles(records);
 
     this.eventEmitter.emit(PRICES_UPDATED, { count: updated, total: existingList.length });
-    this.logger.log(`Price update complete — ${updated} symbols updated`);
+    this.logger.log(`price-scraper: wrote ${updated} prices to market:prices`);
   }
 }
