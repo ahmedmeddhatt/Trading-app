@@ -21,7 +21,14 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot({
-      pinoHttp: { level: process.env.NODE_ENV === 'production' ? 'info' : 'debug' },
+      pinoHttp: {
+        level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+        serializers: {
+          req: (req) => ({ method: req.method, url: req.url }),
+          res: (res) => ({ statusCode: res.statusCode }),
+        },
+        customLogLevel: (_req, res) => res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+      },
     }),
     EventEmitterModule.forRoot(),
     BullModule.forRootAsync({

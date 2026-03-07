@@ -38,7 +38,12 @@
       "Bash(npx nest build --verbose)",
       "Bash(echo \"exit: $?\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''dashboard keys:'', list\\(d.keys\\(\\)\\)\\)\")",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''stocks keys:'', list\\(d.keys\\(\\)\\), ''total:'', d.get\\(''total''\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''stocks keys:'', list\\(d.keys\\(\\)\\), ''total:'', d.get\\(''total''\\)\\)\")",
+      "Bash(npm test -- --passWithNoTests)",
+      "Bash(npm test)",
+      "Bash(grep -v \"^$\")",
+      "Bash(npm test -- --testPathPattern price-scraper.processor)",
+      "Bash(npx jest src/modules/scraper/price-scraper.processor.spec.ts --no-coverage)"
     ]
   }
 }

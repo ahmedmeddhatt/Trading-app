@@ -46,6 +46,12 @@ export class ScraperService implements OnModuleInit {
     await this.listQueue.add('fetch-list-boot', {}, JOB_OPTS);
     this.logger.log('Boot list-scrape job enqueued — waiting for processor to pick up');
 
+    // Price scraper every 30s
+    await this.priceQueue.add('fetch-prices', {}, {
+      ...JOB_OPTS,
+      repeat: { every: 30_000 },
+    });
+
     // Log queue states for visibility
     const listWaiting = await this.listQueue.getWaitingCount();
     const listActive = await this.listQueue.getActiveCount();

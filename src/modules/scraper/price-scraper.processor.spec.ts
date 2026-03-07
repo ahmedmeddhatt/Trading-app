@@ -10,12 +10,14 @@
 const mockPage = {
   goto: jest.fn().mockResolvedValue(undefined),
   waitForLoadState: jest.fn().mockResolvedValue(undefined),
+  waitForSelector: jest.fn().mockResolvedValue(undefined),
   $: jest.fn().mockResolvedValue(null),
   $$eval: jest.fn().mockResolvedValue([]),
   evaluate: jest.fn(),
   content: jest.fn().mockResolvedValue('<html></html>'),
   screenshot: jest.fn().mockResolvedValue(undefined),
   close: jest.fn().mockResolvedValue(undefined),
+  title: jest.fn().mockResolvedValue('EGX Market'),
 };
 
 const mockContext = {
@@ -202,6 +204,7 @@ describe('PriceScraperProcessor', () => {
       mockStockStore.getList.mockResolvedValue([{ symbol: 'COMI' }]);
       // All selectors return null (no table found)
       mockPage.$.mockResolvedValue(null);
+      mockPage.waitForSelector.mockRejectedValue(new Error('Timeout 30000ms exceeded'));
       mockPage.$$eval.mockResolvedValue([
         { id: 'data-grid', class: 'react-table', rows: 0 },
       ]);
