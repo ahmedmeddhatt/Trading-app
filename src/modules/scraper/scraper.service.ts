@@ -46,11 +46,8 @@ export class ScraperService implements OnModuleInit {
     await this.listQueue.add('fetch-list-boot', {}, JOB_OPTS);
     this.logger.log('Boot list-scrape job enqueued — waiting for processor to pick up');
 
-    // Price scraper every 30s
-    await this.priceQueue.add('fetch-prices', {}, {
-      ...JOB_OPTS,
-      repeat: { every: 30_000 },
-    });
+    // Price scraper: self-chaining (30s during market hours, 2h outside)
+    await this.priceQueue.add('fetch-prices', {}, JOB_OPTS);
 
     // Log queue states for visibility
     const listWaiting = await this.listQueue.getWaitingCount();
@@ -70,6 +67,16 @@ export class ScraperService implements OnModuleInit {
     }
 
     this.logger.log('Scraper scheduled: list every 24h, prices every 30s, archiver every 1h');
+  }
+
+  async triggerListScrape(): Promise<void> {
+    await this.listQueue.add('fetch-list-manual', {}, JOB_OPTS);
+    this.logger.log('Manual list-scrape job enqueued');
+  }
+
+  async triggerPriceScrape(): Promise<void> {
+    await this.priceQueue.add('fetch-prices-manual', { force: true }, JOB_OPTS);
+    this.logger.log('Manual price-scrape job enqueued (forced)');
   }
 
   private async resumeIfPaused(queue: Queue, name: string): Promise<void> {

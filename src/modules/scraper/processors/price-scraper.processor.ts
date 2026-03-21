@@ -1,49 +1,25 @@
 import { Logger } from '@nestjs/common';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { Page } from 'playwright';
-import { chromium } from 'playwright-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { StockStoreService } from '../stock-store.service';
 import { RedisWriterService } from '../redis-writer.service';
 import { PRICES_UPDATED } from '../../../common/constants/event-names';
 
-chromium.use(StealthPlugin());
+const EGXPILOT_API = 'https://egxpilot.com/api/stocks/all';
+const MARKET_OPEN_MIN = 10 * 60;
+const MARKET_CLOSE_MIN = 14 * 60 + 30;
+const DELAY_MARKET_OPEN = 30_000;
+const DELAY_MARKET_CLOSED = 2 * 60 * 60 * 1_000;
 
-const LAUNCH_ARGS = [
-  '--no-sandbox',
-  '--disable-setuid-sandbox',
-  '--disable-blink-features=AutomationControlled',
-  '--disable-dev-shm-usage',
-  '--disable-gpu',
-  '--single-process',
-  '--no-zygote',
-];
-
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-
-async function waitForPriceTable(page: Page): Promise<void> {
-  const isCloudflare = await page.$('div#cf-wrapper, #challenge-form, .cf-error-type');
-  if (isCloudflare) throw new Error('CLOUDFLARE_BLOCKED: EGXpilot is serving a challenge page');
-
-  // Actively wait for JS-rendered table rows to appear (site is a client-side SPA)
-  const selectors = ['table tbody tr', '#stocksTable tbody tr', '.price-table tbody tr', '[data-testid="stock-row"]'];
-  for (const selector of selectors) {
-    try {
-      await page.waitForSelector(selector, { timeout: 30_000 });
-      return;
-    } catch {
-      // try next selector
-    }
-  }
-
-  const tables = await page.$$eval('table', (tbls) =>
-    tbls.map((t) => ({ id: t.id, class: t.className, rows: t.rows.length })),
-  );
-  throw new Error(`NO_TABLE_FOUND: Tables on page: ${JSON.stringify(tables)}`);
+interface EgxStock {
+  Symbol: string;
+  LastPrice: number;
+  DailyChange: string;
+  Recommendation: string | null;
+  Daily: string | null;
+  Weekly: string | null;
+  Monthly: string | null;
 }
 
 @Processor('price-scraper')
@@ -54,6 +30,7 @@ export class PriceScraperProcessor extends WorkerHost {
     private readonly stockStore: StockStoreService,
     private readonly redisWriter: RedisWriterService,
     private readonly eventEmitter: EventEmitter2,
+    @InjectQueue('price-scraper') private readonly priceQueue: Queue,
   ) {
     super();
   }
@@ -61,101 +38,88 @@ export class PriceScraperProcessor extends WorkerHost {
   async process(_job: Job): Promise<void> {
     this.logger.log('price-scraper: job started');
 
+    const force: boolean = _job.data?.force === true;
+
     const now = new Date();
     const cairoMinutes = ((now.getUTCHours() + 2) % 24) * 60 + now.getUTCMinutes();
-    if (cairoMinutes < 10 * 60 || cairoMinutes > 14 * 60 + 30) {
-      this.logger.log('price-scraper: outside market hours (10:00–14:30 Cairo) — skipping');
+    const isMarketOpen = cairoMinutes >= MARKET_OPEN_MIN && cairoMinutes <= MARKET_CLOSE_MIN;
+    const nextDelay = isMarketOpen ? DELAY_MARKET_OPEN : DELAY_MARKET_CLOSED;
+
+    if (!force && !isMarketOpen) {
+      this.logger.log('price-scraper: outside market hours — next run in 2h');
+      await this.priceQueue.add('fetch-prices', {}, { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 });
       return;
     }
+    if (force) this.logger.log('price-scraper: forced run — bypassing market hours guard');
 
     try {
-      const existingList = await this.stockStore.getList();
-      if (existingList.length === 0) {
-        this.logger.warn('price-scraper: market:list is empty — skipping. Run list-scraper first.');
+      this.logger.log(`price-scraper: fetching ${EGXPILOT_API}`);
+      const res = await fetch(EGXPILOT_API, {
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
+      });
+
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
+
+      const json = (await res.json()) as { updatedAt: string; stocks: EgxStock[] };
+      const raw = json.stocks ?? [];
+
+      if (raw.length === 0) {
+        this.logger.warn('price-scraper: API returned 0 stocks — retrying in 60s');
+        if (!force) await this.priceQueue.add('fetch-prices', {}, { delay: 60_000, removeOnComplete: 10, removeOnFail: 50 });
         return;
       }
-      this.logger.log(`price-scraper: got ${existingList.length} symbols from market:list`);
 
-      this.logger.log('price-scraper: launching Playwright browser...');
-      const browser = await chromium.launch({
-        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
-        headless: true,
-        args: LAUNCH_ARGS,
-      });
-      this.logger.log('price-scraper: browser launched');
-      let updated = 0;
+      const timestamp = new Date().toISOString();
+      const hsetBatch: Record<string, string> = {};
+      const publishBatch: { symbol: string; price: number; changePercent: number; lastUpdate: string }[] = [];
 
-      try {
-        const context = await browser.newContext({
-          userAgent: USER_AGENT,
-          extraHTTPHeaders: {
-            'Accept-Language': 'en-US,en;q=0.9',
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-          viewport: { width: 1280, height: 800 },
+      for (const s of raw) {
+        if (!s.Symbol || s.LastPrice == null) continue;
+        const symbol = s.Symbol.trim();
+        const price = s.LastPrice;
+        const changePercent = parseFloat(s.DailyChange ?? '0') || 0;
+
+        const prevPrice = this.stockStore.getPrevPrice(symbol);
+        const trending = prevPrice !== null ? Math.abs((price - prevPrice) / prevPrice) > 0.03 : false;
+
+        hsetBatch[symbol] = JSON.stringify({
+          price,
+          changePercent,
+          trending,
+          timestamp,
+          recommendation: s.Recommendation ?? null,
+          signals: { daily: s.Daily ?? null, weekly: s.Weekly ?? null, monthly: s.Monthly ?? null },
         });
-
-        const page = await context.newPage();
-        this.logger.log('price-scraper: navigating to EGXpilot...');
-        await page.goto('https://egxpilot.com/stocks.html', {
-          waitUntil: 'domcontentloaded',
-          timeout: 45_000,
-        });
-        this.logger.log(`price-scraper: page loaded, title="${await page.title()}"`);
-        await waitForPriceTable(page);
-
-        const priceMap: Record<string, { price: number; changePercent: number }> = await page.evaluate(() => {
-          const result: Record<string, { price: number; changePercent: number }> = {};
-          document.querySelectorAll('table tbody tr').forEach((tr) => {
-            const cells = tr.querySelectorAll('td');
-            if (cells.length < 3) return;
-            const symbol = cells[0]?.textContent?.trim() ?? '';
-            const price = parseFloat((cells[1]?.textContent?.trim() ?? '').replace(/,/g, ''));
-            const changePercent = parseFloat((cells[2]?.textContent?.trim() ?? '').replace('%', ''));
-            if (symbol && !isNaN(price)) {
-              result[symbol] = { price, changePercent: isNaN(changePercent) ? 0 : changePercent };
-            }
-          });
-          return result;
-        });
-
-        const timestamp = new Date().toISOString();
-        const hsetBatch: Record<string, string> = {};
-        const publishBatch: { symbol: string; price: number; timestamp: string }[] = [];
-
-        for (const [symbol, data] of Object.entries(priceMap)) {
-          const prevPrice = this.stockStore.getPrevPrice(symbol);
-          const trending = prevPrice !== null ? Math.abs((data.price - prevPrice) / prevPrice) > 0.03 : false;
-
-          hsetBatch[symbol] = JSON.stringify({ price: data.price, changePercent: data.changePercent, trending, timestamp });
-          publishBatch.push({ symbol, price: data.price, timestamp });
-          this.stockStore.savePriceData(symbol, data.price, data.changePercent, []);
-          this.stockStore.savePrevPrice(symbol, data.price);
-          updated++;
-        }
-
-        if (updated > 0) {
-          await this.redisWriter.hsetMany(hsetBatch);
-          await this.redisWriter.publish('prices', JSON.stringify(publishBatch));
-        }
-
-        this.logger.log(`price-scraper: wrote ${updated} prices to market:prices`);
-      } finally {
-        await browser.close();
+        publishBatch.push({ symbol, price, changePercent, lastUpdate: timestamp });
+        this.stockStore.savePriceData(symbol, price, changePercent, []);
+        this.stockStore.savePrevPrice(symbol, price);
       }
+
+      const updated = publishBatch.length;
+      if (updated > 0) {
+        await this.redisWriter.hsetMany(hsetBatch);
+        await this.redisWriter.publish('prices', JSON.stringify(publishBatch));
+      }
+
+      this.logger.log(`price-scraper: wrote ${updated} prices (API updatedAt=${json.updatedAt})`);
 
       const records = await this.stockStore.buildOutput();
       this.stockStore.writeFiles(records);
 
-      this.eventEmitter.emit(PRICES_UPDATED, { count: updated, total: existingList.length });
-      this.logger.log(`Price update complete — ${updated} symbols updated`);
+      this.eventEmitter.emit(PRICES_UPDATED, { count: updated, total: raw.length });
+
+      if (!force) {
+        await this.priceQueue.add('fetch-prices', {}, { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 });
+      }
     } catch (error) {
       this.logger.error({
         event: 'SCRAPER_FAILED',
         processor: 'price-scraper',
         error: (error as Error).message,
-        stack: (error as Error).stack,
       }, 'Scraper job failed');
+      if (!force) {
+        await this.priceQueue.add('fetch-prices', {}, { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 });
+      }
       throw error;
     }
   }
