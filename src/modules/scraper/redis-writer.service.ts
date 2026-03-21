@@ -52,6 +52,11 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
     await this.client.hset('market:prices', symbol, value);
   }
 
+  async hsetMany(data: Record<string, string>): Promise<void> {
+    this.monitor.increment('HSET');
+    await this.client.hset('market:prices', data);
+  }
+
   async hgetall(key: string): Promise<Record<string, string>> {
     this.monitor.increment('HGETALL');
     return this.client.hgetall(key);
