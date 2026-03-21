@@ -43,7 +43,13 @@
       "Bash(npm test)",
       "Bash(grep -v \"^$\")",
       "Bash(npm test -- --testPathPattern price-scraper.processor)",
-      "Bash(npx jest src/modules/scraper/price-scraper.processor.spec.ts --no-coverage)"
+      "Bash(npx jest src/modules/scraper/price-scraper.processor.spec.ts --no-coverage)",
+      "Bash(npm start:*)",
+      "Bash(findstr :3000)",
+      "Bash(taskkill /PID 17388 /F)",
+      "Bash(cmd //c \"taskkill /PID 17388 /F\")",
+      "Bash(cmd //c \"type C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Work-Trading-app\\\\2f58210a-d126-4f8a-84b7-c391d47a01e3\\\\tasks\\\\b8fcxjlwo.output\")",
+      "Bash(cmd //c \"dir C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Work-Trading-app\\\\2f58210a-d126-4f8a-84b7-c391d47a01e3\\\\tasks\\\\\")"
     ]
   }
 }
