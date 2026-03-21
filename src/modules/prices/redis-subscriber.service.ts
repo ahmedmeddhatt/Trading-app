@@ -60,8 +60,11 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
 
     this.subscriber.on('message', (_channel: string, message: string) => {
       try {
-        const update: PriceUpdate = JSON.parse(message);
-        this.priceUpdates$.next(update);
+        const parsed = JSON.parse(message);
+        const updates: PriceUpdate[] = Array.isArray(parsed) ? parsed : [parsed];
+        for (const update of updates) {
+          this.priceUpdates$.next(update);
+        }
       } catch {
         this.logger.warn(`Invalid price message: ${message}`);
       }
