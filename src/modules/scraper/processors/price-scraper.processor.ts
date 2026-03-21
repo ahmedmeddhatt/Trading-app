@@ -60,6 +60,14 @@ export class PriceScraperProcessor extends WorkerHost {
 
   async process(_job: Job): Promise<void> {
     this.logger.log('price-scraper: job started');
+
+    const now = new Date();
+    const cairoMinutes = ((now.getUTCHours() + 2) % 24) * 60 + now.getUTCMinutes();
+    if (cairoMinutes < 10 * 60 || cairoMinutes > 14 * 60 + 30) {
+      this.logger.log('price-scraper: outside market hours (10:00–14:30 Cairo) — skipping');
+      return;
+    }
+
     try {
       const existingList = await this.stockStore.getList();
       if (existingList.length === 0) {
@@ -112,17 +120,23 @@ export class PriceScraperProcessor extends WorkerHost {
         });
 
         const timestamp = new Date().toISOString();
+        const hsetBatch: Record<string, string> = {};
+        const publishBatch: { symbol: string; price: number; timestamp: string }[] = [];
 
         for (const [symbol, data] of Object.entries(priceMap)) {
-          const prevPrice = await this.stockStore.getPrevPrice(symbol);
+          const prevPrice = this.stockStore.getPrevPrice(symbol);
           const trending = prevPrice !== null ? Math.abs((data.price - prevPrice) / prevPrice) > 0.03 : false;
 
-          const payload = JSON.stringify({ price: data.price, changePercent: data.changePercent, trending, timestamp });
-          await this.redisWriter.hset(symbol, payload);
-          await this.redisWriter.publish('prices', JSON.stringify({ symbol, price: data.price, timestamp }));
-          await this.stockStore.savePriceData(symbol, data.price, data.changePercent, []);
-          await this.stockStore.savePrevPrice(symbol, data.price);
+          hsetBatch[symbol] = JSON.stringify({ price: data.price, changePercent: data.changePercent, trending, timestamp });
+          publishBatch.push({ symbol, price: data.price, timestamp });
+          this.stockStore.savePriceData(symbol, data.price, data.changePercent, []);
+          this.stockStore.savePrevPrice(symbol, data.price);
           updated++;
+        }
+
+        if (updated > 0) {
+          await this.redisWriter.hsetMany(hsetBatch);
+          await this.redisWriter.publish('prices', JSON.stringify(publishBatch));
         }
 
         this.logger.log(`price-scraper: wrote ${updated} prices to market:prices`);

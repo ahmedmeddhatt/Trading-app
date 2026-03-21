@@ -9,6 +9,11 @@ export class StockStoreService {
   private readonly logger = new Logger(StockStoreService.name);
   private readonly outputDir = path.join(process.cwd(), 'output');
 
+  private listCache: BaseStock[] | null = null;
+  private readonly detailsCache = new Map<string, StockDetails>();
+  private readonly prevPricesCache = new Map<string, number>();
+  private readonly priceDataCache = new Map<string, { price: number; changePercent: number; news: NewsItem[] }>();
+
   constructor(private readonly redis: RedisWriterService) {
     if (!fs.existsSync(this.outputDir)) {
       fs.mkdirSync(this.outputDir, { recursive: true });
@@ -16,57 +21,55 @@ export class StockStoreService {
   }
 
   async saveList(stocks: BaseStock[]): Promise<void> {
+    this.listCache = stocks;
     await this.redis.set('market:list', JSON.stringify(stocks));
     this.logger.log(`Saved ${stocks.length} stocks to market:list`);
   }
 
   async getList(): Promise<BaseStock[]> {
+    if (this.listCache !== null) return this.listCache;
     const raw = await this.redis.get('market:list');
     if (!raw) return [];
     try {
-      return JSON.parse(raw) as BaseStock[];
+      this.listCache = JSON.parse(raw) as BaseStock[];
+      return this.listCache;
     } catch {
       return [];
     }
   }
 
   async saveDetails(symbol: string, details: StockDetails): Promise<void> {
+    this.detailsCache.set(symbol, details);
     await this.redis.set(`market:details:${symbol}`, JSON.stringify(details));
   }
 
   async getDetails(symbol: string): Promise<StockDetails | null> {
+    if (this.detailsCache.has(symbol)) return this.detailsCache.get(symbol)!;
     const raw = await this.redis.get(`market:details:${symbol}`);
     if (!raw) return null;
     try {
-      return JSON.parse(raw) as StockDetails;
+      const details = JSON.parse(raw) as StockDetails;
+      this.detailsCache.set(symbol, details);
+      return details;
     } catch {
       return null;
     }
   }
 
-  async savePriceData(symbol: string, price: number, changePercent: number, news: NewsItem[]): Promise<void> {
-    await this.redis.set(`market:pricedata:${symbol}`, JSON.stringify({ price, changePercent, news }));
+  savePriceData(symbol: string, price: number, changePercent: number, news: NewsItem[]): void {
+    this.priceDataCache.set(symbol, { price, changePercent, news });
   }
 
-  async getPriceData(symbol: string): Promise<{ price: number; changePercent: number; news: NewsItem[] } | null> {
-    const raw = await this.redis.get(`market:pricedata:${symbol}`);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
+  getPriceData(symbol: string): { price: number; changePercent: number; news: NewsItem[] } | null {
+    return this.priceDataCache.get(symbol) ?? null;
   }
 
-  async savePrevPrice(symbol: string, price: number): Promise<void> {
-    await this.redis.set(`market:prev:${symbol}`, String(price));
+  savePrevPrice(symbol: string, price: number): void {
+    this.prevPricesCache.set(symbol, price);
   }
 
-  async getPrevPrice(symbol: string): Promise<number | null> {
-    const raw = await this.redis.get(`market:prev:${symbol}`);
-    if (!raw) return null;
-    const n = parseFloat(raw);
-    return isNaN(n) ? null : n;
+  getPrevPrice(symbol: string): number | null {
+    return this.prevPricesCache.get(symbol) ?? null;
   }
 
   async buildOutput(): Promise<StockRecord[]> {
@@ -75,8 +78,8 @@ export class StockStoreService {
 
     for (const stock of list) {
       const details = await this.getDetails(stock.symbol);
-      const priceData = await this.getPriceData(stock.symbol);
-      const prevPrice = await this.getPrevPrice(stock.symbol);
+      const priceData = this.getPriceData(stock.symbol);
+      const prevPrice = this.getPrevPrice(stock.symbol);
 
       const price = priceData?.price ?? details?.price ?? null;
       const changePercent = priceData?.changePercent ?? null;
