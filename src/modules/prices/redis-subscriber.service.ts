@@ -1,7 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Subject } from 'rxjs';
+import { PRICES_UPDATED } from '../../common/constants/event-names';
 
 export interface PriceUpdate {
   symbol: string;
@@ -9,69 +9,22 @@ export interface PriceUpdate {
   changePercent: number;
   lastUpdate: string;
   recommendation?: string | null;
-  signals?: {
-    daily: string | null;
-    weekly: string | null;
-    monthly: string | null;
-  } | null;
+  signals?: { daily: string | null; weekly: string | null; monthly: string | null } | null;
 }
 
+/**
+ * Bridges the in-process PRICES_UPDATED event to an RxJS Subject so that
+ * PricesService can stream updates to SSE clients.
+ * No Redis connection needed — fully in-process.
+ */
 @Injectable()
-export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(RedisSubscriberService.name);
-  private subscriber: Redis;
-
+export class RedisSubscriberService {
   readonly priceUpdates$ = new Subject<PriceUpdate>();
 
-  constructor(private readonly config: ConfigService) {}
-
-  onModuleInit(): void {
-    const url = this.config.get<string>('REDIS_URL', 'redis://localhost:6379');
-    this.subscriber = new Redis(url, {
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      lazyConnect: true,
-      retryStrategy: (times) => Math.min(times * 500, 10000),
-      ...(url.startsWith('rediss://') && { tls: {} }),
-    });
-
-    this.subscriber.on('error', (err) => {
-      this.logger.warn(`Redis connection error: ${err.message}`);
-    });
-
-    this.subscriber.on('connect', () => {
-      const url = this.config.get<string>('REDIS_URL', this.config.get<string>('UPSTASH_REDIS_URL', ''));
-      const host = url.split('@')[1]?.split(':')[0] ?? 'unknown';
-      this.logger.log(`RedisSubscriber verified — connected to host: ${host}`);
-
-      this.subscriber.subscribe('prices', (err) => {
-        if (err) {
-          this.logger.error(`Failed to subscribe to prices channel: ${err.message}`);
-          return;
-        }
-        this.logger.log('Subscribed to Redis prices channel');
-      });
-    });
-
-    // Connect explicitly (lazyConnect: true prevents auto-connect)
-    this.subscriber.connect().catch((err) => {
-      this.logger.warn(`Redis initial connect failed: ${err.message}`);
-    });
-
-    this.subscriber.on('message', (_channel: string, message: string) => {
-      try {
-        const parsed = JSON.parse(message);
-        const updates: PriceUpdate[] = Array.isArray(parsed) ? parsed : [parsed];
-        for (const update of updates) {
-          this.priceUpdates$.next(update);
-        }
-      } catch {
-        this.logger.warn(`Invalid price message: ${message}`);
-      }
-    });
-  }
-
-  onModuleDestroy(): void {
-    this.subscriber.disconnect();
+  @OnEvent(PRICES_UPDATED)
+  onPricesUpdated(payload: { updates: PriceUpdate[] }): void {
+    for (const update of payload.updates ?? []) {
+      this.priceUpdates$.next(update);
+    }
   }
 }

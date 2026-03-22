@@ -29,6 +29,8 @@ const testUser = {
   passwordHash: '$2b$10$hashedpassword',
   googleId: null,
   appleId: null,
+  resetToken: null,
+  resetTokenExpiry: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

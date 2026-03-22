@@ -58,8 +58,9 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
   }
 
   async hgetall(key: string): Promise<Record<string, string>> {
+    if (!this.client) return {};
     this.monitor.increment('HGETALL');
-    return this.client.hgetall(key);
+    return this.client.hgetall(key) ?? {};
   }
 
   async publish(channel: string, message: string): Promise<void> {
