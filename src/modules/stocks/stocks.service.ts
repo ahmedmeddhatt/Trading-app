@@ -4,7 +4,8 @@ import { RedisService } from '../../common/redis/redis.service';
 import { StocksQueryDto } from './dto/stocks-query.dto';
 import { Prisma } from '@prisma/client';
 
-const CACHE_TTL = 30; // seconds
+const CACHE_TTL = 60; // seconds — fresh prices
+const CACHE_TTL_STALE = 300; // seconds — no fresh prices (5 min, reduce Redis ops)
 const DASHBOARD_CACHE_KEY = 'cache:dashboard';
 
 interface LivePrice {
@@ -86,7 +87,7 @@ export class StocksService {
         if (!lp.timestamp) return false;
         return Date.now() - new Date(lp.timestamp).getTime() <= 5 * 60 * 1000;
       }).length;
-      const cacheTtl = freshCount > 0 ? CACHE_TTL : 5;
+      const cacheTtl = freshCount > 0 ? CACHE_TTL : CACHE_TTL_STALE;
       await this.redis.setex(DASHBOARD_CACHE_KEY, cacheTtl, JSON.stringify(base));
     }
 

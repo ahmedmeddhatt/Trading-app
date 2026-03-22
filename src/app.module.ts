@@ -1,7 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { BullModule } from '@nestjs/bullmq';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './database/prisma.module';
 import { UsersModule } from './modules/users/users.module';
@@ -31,13 +30,6 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
       },
     }),
     EventEmitterModule.forRoot(),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const url = config.get<string>('REDIS_URL', 'redis://localhost:6379');
-        return { connection: { url, ...(url.startsWith('rediss://') && { tls: {} }) } };
-      },
-    }),
     RedisModule,
     PrismaModule,
     UsersModule,
