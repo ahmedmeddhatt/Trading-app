@@ -2,6 +2,7 @@ import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common
 import { StockStoreService } from './stock-store.service';
 import { RedisWriterService } from './redis-writer.service';
 import { PrismaService } from '../../database/prisma.service';
+import { TechnicalAnalysisService } from './technical-analysis.service';
 
 @Controller('stocks')
 export class StocksController {
@@ -9,6 +10,7 @@ export class StocksController {
     private readonly stockStore: StockStoreService,
     private readonly redis: RedisWriterService,
     private readonly prisma: PrismaService,
+    private readonly technicalAnalysis: TechnicalAnalysisService,
   ) {}
 
   @Get('dashboard')
@@ -143,6 +145,11 @@ export class StocksController {
       total,
       page: parseInt(page, 10) || 1,
     };
+  }
+
+  @Get(':symbol/technical')
+  getTechnicalAnalysis(@Param('symbol') symbol: string) {
+    return this.technicalAnalysis.analyze(symbol);
   }
 
   @Get(':symbol/history')
