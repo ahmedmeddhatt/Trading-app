@@ -6,6 +6,8 @@ import { RedisMonitorService } from './redis-monitor.service';
 import { StockStoreService } from './stock-store.service';
 import { StockMetadataService } from './stock-metadata.service';
 import { PriceHistoryService } from './price-history.service';
+import { TechnicalAnalysisService } from './technical-analysis.service';
+import { StocksController } from './stocks.controller';
 import { ListScraperProcessor } from './processors/list-scraper.processor';
 import { PriceScraperProcessor } from './processors/price-scraper.processor';
 import { DetailScraperProcessor } from './processors/detail-scraper.processor';
@@ -13,6 +15,7 @@ import { ArchiverProcessor } from './processors/archiver.processor';
 import { DebugScraperProcessor } from './processors/debug-scraper.processor';
 
 @Module({
+  controllers: [StocksController],
   imports: [
     BullModule.registerQueue(
       { name: 'list-scraper' },
@@ -29,6 +32,7 @@ import { DebugScraperProcessor } from './processors/debug-scraper.processor';
     StockStoreService,
     StockMetadataService,
     PriceHistoryService,
+    TechnicalAnalysisService,
     ListScraperProcessor,
     PriceScraperProcessor,
     DetailScraperProcessor,

@@ -17,6 +17,63 @@ export class PortfolioController {
     return this.portfolioService.getAnalytics(userId);
   }
 
+  @Get(':userId/transactions')
+  @UseGuards(JwtAuthGuard)
+  getTransactionsMaster(
+    @Param('userId') userId: string,
+    @Query('symbol') symbol?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.portfolioService.getTransactionsMaster(userId, { symbol, type, from, to });
+  }
+
+  @Get(':userId/transactions/:id/detail')
+  @UseGuards(JwtAuthGuard)
+  getTransactionDetail(
+    @Param('userId') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.portfolioService.getTransactionDetail(userId, id);
+  }
+
+  @Get(':userId/positions/:symbol/detail')
+  @UseGuards(JwtAuthGuard)
+  getPositionDetail(
+    @Param('userId') userId: string,
+    @Param('symbol') symbol: string,
+  ) {
+    return this.portfolioService.getPositionDetail(userId, symbol.toUpperCase());
+  }
+
+  @Get(':userId/risk')
+  @UseGuards(JwtAuthGuard)
+  getRiskAnalytics(@Param('userId') userId: string) {
+    return this.portfolioService.getRiskAnalytics(userId);
+  }
+
+  @Get(':userId/pnl-calendar')
+  @UseGuards(JwtAuthGuard)
+  getPnLCalendar(
+    @Param('userId') userId: string,
+    @Query('year') year?: string,
+  ) {
+    return this.portfolioService.getPnLCalendar(userId, year ? parseInt(year) : new Date().getFullYear());
+  }
+
+  @Get(':userId/closed-trades')
+  @UseGuards(JwtAuthGuard)
+  getClosedTrades(@Param('userId') userId: string) {
+    return this.portfolioService.getClosedTrades(userId);
+  }
+
+  @Get(':userId/insights')
+  @UseGuards(JwtAuthGuard)
+  getInsights(@Param('userId') userId: string) {
+    return this.portfolioService.getInsights(userId);
+  }
+
   @Get(':userId/stock/:symbol/history')
   @UseGuards(JwtAuthGuard)
   getStockHistory(
