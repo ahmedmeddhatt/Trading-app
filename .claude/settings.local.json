@@ -50,7 +50,8 @@
       "Bash(cmd //c \"taskkill /PID 17388 /F\")",
       "Bash(cmd //c \"type C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Work-Trading-app\\\\2f58210a-d126-4f8a-84b7-c391d47a01e3\\\\tasks\\\\b8fcxjlwo.output\")",
       "Bash(cmd //c \"dir C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Work-Trading-app\\\\2f58210a-d126-4f8a-84b7-c391d47a01e3\\\\tasks\\\\\")",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(ls d:/Work/Trading/Trading-app/tsconfig*.json)"
     ]
   }
 }
