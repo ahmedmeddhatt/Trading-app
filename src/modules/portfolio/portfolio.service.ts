@@ -102,8 +102,13 @@ export class PortfolioService {
 
     let totalInvested = new Decimal(0);
     let totalUnrealized = new Decimal(0);
-    let totalRealized = new Decimal(0);
     let totalPortfolioValue = new Decimal(0);
+
+    // Compute totalRealized from ALL realizedGains — not just for positions still in DB
+    const totalRealized = realizedGains.reduce(
+      (sum, g) => sum.add(new Decimal(g.profit.toString())),
+      new Decimal(0),
+    );
 
     type PosData = {
       symbol: string; totalQuantity: string; averagePrice: string; totalInvested: string;
@@ -135,7 +140,6 @@ export class PortfolioService {
 
       totalInvested = totalInvested.add(invested);
       if (unrealizedRaw) totalUnrealized = totalUnrealized.add(unrealizedRaw);
-      totalRealized = totalRealized.add(realized);
       totalPortfolioValue = totalPortfolioValue.add(marketValue);
 
       return {
@@ -337,26 +341,75 @@ export class PortfolioService {
       this.redis.hgetall('market:prices'),
     ]);
 
-    if (!position) throw new NotFoundException(`No position found for ${symbol}`);
+    // Reconstruct from transactions if position row doesn't exist
+    if (!position && txns.length === 0) throw new NotFoundException(`No position found for ${symbol}`);
 
     const { price: currentPrice } = this.parseLivePriceFull(rawPrices, symbol);
-    const avgPx = new Decimal(position.averagePrice.toString());
-    const qty = new Decimal(position.totalQuantity.toString());
-    const invested = new Decimal(position.totalInvested.toString());
 
-    const breakEvenPrice = avgPx.toFixed(2);
-    const gapToBreakEven = currentPrice != null
-      ? ((currentPrice - avgPx.toNumber()) / avgPx.toNumber() * 100).toFixed(2)
+    let qty: Decimal;
+    let avgPx: Decimal;
+    let invested: Decimal;
+
+    if (position) {
+      avgPx = new Decimal(position.averagePrice.toString());
+      qty = new Decimal(position.totalQuantity.toString());
+      invested = new Decimal(position.totalInvested.toString());
+    } else {
+      // Reconstruct current state by replaying transactions
+      let runQty = new Decimal(0);
+      let runCost = new Decimal(0);
+      for (const t of txns) {
+        const tQty = new Decimal(t.quantity.toString());
+        const tPx = new Decimal(t.price.toString());
+        if (t.type === TransactionType.BUY) {
+          runCost = runCost.add(tQty.mul(tPx));
+          runQty = runQty.add(tQty);
+        } else {
+          const sellFraction = runQty.isZero() ? new Decimal(0) : tQty.div(runQty);
+          runCost = runCost.sub(runCost.mul(sellFraction));
+          runQty = runQty.sub(tQty);
+          if (runQty.isNegative()) runQty = new Decimal(0);
+          if (runCost.isNegative()) runCost = new Decimal(0);
+        }
+      }
+      qty = runQty;
+      avgPx = runQty.isZero() ? new Decimal(0) : runCost.div(runQty);
+      invested = runCost;
+    }
+
+    const buyTxns = txns.filter((t) => t.type === TransactionType.BUY);
+
+    // Original totals from all BUY transactions (never zeroed out)
+    const totalQtyBought = buyTxns.reduce((s, t) => s.add(t.quantity.toString()), new Decimal(0));
+    const totalBuyCostRaw = buyTxns.reduce(
+      (s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
+      new Decimal(0),
+    );
+    const totalBuyFeesRaw = buyTxns.reduce(
+      (s, t) => s.add((t as any).fees?.toString() ?? '0'),
+      new Decimal(0),
+    );
+    const totalOriginalInvested = totalBuyCostRaw.add(totalBuyFeesRaw);
+    // Weighted avg entry price across ALL buys (for break-even display on closed positions)
+    const avgBuyPrice = totalQtyBought.isZero() ? new Decimal(0) : totalBuyCostRaw.div(totalQtyBought);
+
+    // For open positions use live avgPx; for closed positions use historical avg buy price
+    const displayAvgPx = qty.isZero() ? avgBuyPrice : avgPx;
+    const displayInvested = invested.isZero() ? totalOriginalInvested : invested;
+
+    const breakEvenPrice = displayAvgPx.toFixed(2);
+    const gapToBreakEven = currentPrice != null && !displayAvgPx.isZero()
+      ? ((currentPrice - displayAvgPx.toNumber()) / displayAvgPx.toNumber() * 100).toFixed(2)
       : null;
-    const unrealizedPnL = currentPrice != null
-      ? new Decimal(currentPrice).sub(avgPx).mul(qty).toFixed(2)
+    const unrealizedPnL = currentPrice != null && !qty.isZero()
+      ? new Decimal(currentPrice).sub(displayAvgPx).mul(qty).toFixed(2)
       : null;
-    const unrealizedPct = currentPrice != null && !invested.isZero()
-      ? new Decimal(currentPrice).sub(avgPx).mul(qty).div(invested).mul(100).toFixed(2)
+    const unrealizedPct = currentPrice != null && !qty.isZero() && !displayInvested.isZero()
+      ? new Decimal(currentPrice).sub(displayAvgPx).mul(qty).div(displayInvested).mul(100).toFixed(2)
       : null;
 
     // days held = days since first BUY
-    const firstBuy = txns.find((t) => t.type === TransactionType.BUY);
+    const firstBuy = buyTxns[0] ?? null;
     const daysHeld = firstBuy
       ? Math.floor((Date.now() - firstBuy.createdAt.getTime()) / 86400000)
       : null;
@@ -366,27 +419,26 @@ export class PortfolioService {
       (sum, t) => sum.add((t as any).fees?.toString() ?? '0'), new Decimal(0),
     ).toFixed(2);
 
-    // cost basis ladder
-    const totalQtyBought = txns
-      .filter((t) => t.type === TransactionType.BUY)
-      .reduce((s, t) => s.add(t.quantity.toString()), new Decimal(0));
-    const heldFraction = totalQtyBought.isZero() ? new Decimal(0) : qty.div(totalQtyBought);
+    // cost basis ladder — show all original buy lots
+    // For open positions: scale to currently-held fraction; for closed: show all lots
+    const heldFraction = totalQtyBought.isZero()
+      ? new Decimal(1)
+      : qty.isZero() ? new Decimal(1) : qty.div(totalQtyBought);
 
-    const costBasisLadder = txns
-      .filter((t) => t.type === TransactionType.BUY)
-      .map((t) => {
-        const buyPx = parseFloat(t.price.toString());
-        const lotQty = new Decimal(t.quantity.toString()).mul(heldFraction);
-        return {
-          date: t.createdAt.toISOString(),
-          quantity: lotQty.toFixed(4),
-          buyPrice: buyPx.toFixed(2),
-          lotValue: lotQty.mul(buyPx).toFixed(2),
-          isAboveBreakEven: currentPrice != null ? buyPx < currentPrice : false,
-        };
-      });
+    const costBasisLadder = buyTxns.map((t) => {
+      const buyPx = new Decimal(t.price.toString());
+      const originalLotQty = new Decimal(t.quantity.toString());
+      const displayLotQty = qty.isZero() ? originalLotQty : originalLotQty.mul(heldFraction);
+      return {
+        date: t.createdAt.toISOString(),
+        quantity: parseFloat(displayLotQty.toFixed(4)),
+        buyPrice: parseFloat(buyPx.toFixed(2)),
+        lotValue: parseFloat(displayLotQty.mul(buyPx).toFixed(2)),
+        isAboveBreakEven: currentPrice != null ? buyPx.lt(currentPrice) : false,
+      };
+    });
 
-    // allTransactions with running cumulative
+    // allTransactions with running cumulative + pnlOnSell matching
     let cumQty = new Decimal(0);
     let cumInv = new Decimal(0);
     const allTransactions = txns.map((t) => {
@@ -402,6 +454,23 @@ export class PortfolioService {
         if (cumQty.isZero()) cumInv = new Decimal(0);
         else cumInv = cumQty.mul(cumInv.div(cumQty.add(tQty)));
       }
+
+      // Match SELL to RealizedGain to get profit + return%
+      let pnlOnSell: string | null = null;
+      let returnPctOnSell: string | null = null;
+      if (t.type === TransactionType.SELL) {
+        const matched = realizedGains.find((g) =>
+          new Decimal(g.quantity.toString()).eq(tQty) &&
+          new Decimal(g.sellPrice.toString()).eq(tPx) &&
+          Math.abs(g.createdAt.getTime() - t.createdAt.getTime()) < 10000,
+        );
+        if (matched) {
+          pnlOnSell = new Decimal(matched.profit.toString()).toFixed(2);
+          const avgPx = new Decimal(matched.avgPrice.toString());
+          returnPctOnSell = avgPx.isZero() ? null : tPx.sub(avgPx).div(avgPx).mul(100).toFixed(2);
+        }
+      }
+
       return {
         id: t.id, type: t.type,
         quantity: t.quantity.toString(),
@@ -411,16 +480,32 @@ export class PortfolioService {
         createdAt: t.createdAt,
         cumulativeQty: cumQty.toFixed(4),
         cumulativeAvgPrice: cumQty.isZero() ? '0.00' : cumInv.div(cumQty).toFixed(2),
+        pnlOnSell,
+        returnPctOnSell,
       };
     });
+
+    const isClosed = qty.isZero();
+    const sellTxns = txns.filter((t) => t.type === TransactionType.SELL);
+    const closedDate = isClosed && sellTxns.length > 0
+      ? sellTxns[sellTxns.length - 1].createdAt.toISOString()
+      : null;
+    const totalRealizedPnL = realizedGains
+      .reduce((s, g) => s.add(g.profit.toString()), new Decimal(0))
+      .toFixed(2);
+    const totalProceedsFromSells = sellTxns
+      .reduce((s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())), new Decimal(0))
+      .toFixed(2);
 
     return {
       position: {
         symbol,
         totalQuantity: qty.toString(),
-        averagePrice: avgPx.toFixed(2),
-        totalInvested: invested.toFixed(2),
+        averagePrice: displayAvgPx.toFixed(2),
+        totalInvested: displayInvested.toFixed(2),
       },
+      isClosed,
+      closedDate,
       currentPrice,
       breakEvenPrice,
       gapToBreakEven,
@@ -428,6 +513,8 @@ export class PortfolioService {
       unrealizedPct,
       daysHeld,
       totalFeesPaid,
+      totalRealizedPnL,
+      totalProceedsFromSells,
       costBasisLadder,
       priceHistory: priceHistory.map((h) => ({
         price: parseFloat(h.price.toString()),
@@ -435,11 +522,15 @@ export class PortfolioService {
       })),
       allTransactions,
       realizedGains: realizedGains.map((g) => ({
+        id: g.id,
         quantity: g.quantity.toString(),
         sellPrice: new Decimal(g.sellPrice.toString()).toFixed(2),
         avgPrice: new Decimal(g.avgPrice.toString()).toFixed(2),
         profit: new Decimal(g.profit.toString()).toFixed(2),
         fees: new Decimal(g.fees.toString()).toFixed(2),
+        returnPct: new Decimal(g.avgPrice.toString()).isZero() ? null
+          : new Decimal(g.sellPrice.toString()).sub(g.avgPrice.toString())
+              .div(g.avgPrice.toString()).mul(100).toFixed(2),
         createdAt: g.createdAt,
       })),
     };
@@ -886,7 +977,167 @@ export class PortfolioService {
       return { timestamp, totalValue: totalValue.toFixed(2), totalInvested: totalInvested.toFixed(2) };
     });
 
+    // Always append current live prices from Redis as the "now" data point
+    // so the chart has at least 1 point even when price history is sparse
+    const rawPrices = await this.redis.hgetall('market:prices');
+    if (rawPrices) {
+      let currentValue = new Decimal(0);
+      let hasAnyPrice = false;
+      for (const symbol of symbols) {
+        const px = this.parseLivePrice(rawPrices, symbol);
+        if (px) {
+          currentValue = currentValue.add(px.mul(qtyBySymbol[symbol]));
+          hasAnyPrice = true;
+        }
+      }
+      if (hasAnyPrice) {
+        const nowKey = new Date().toISOString();
+        if (!byTimestamp.has(nowKey)) {
+          timeline.push({ timestamp: nowKey, totalValue: currentValue.toFixed(2), totalInvested: totalInvested.toFixed(2) });
+        }
+      }
+    }
+
+    timeline.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    // If still < 2 points, fall back to transaction-based timeline
+    if (timeline.length < 2) {
+      const txTimeline = await this.buildTransactionTimeline(userId, from, to, totalInvested);
+      if (txTimeline.length > 0) {
+        const merged = [...timeline, ...txTimeline].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        const seen = new Set<string>();
+        const deduped = merged.filter((p) => { if (seen.has(p.timestamp)) return false; seen.add(p.timestamp); return true; });
+        return { timeline: deduped };
+      }
+    }
+
     return { timeline };
+  }
+
+  private async buildTransactionTimeline(
+    userId: string,
+    from: Date,
+    to: Date,
+    totalInvested: Decimal,
+  ): Promise<{ timestamp: string; totalValue: string; totalInvested: string }[]> {
+    const allTxns = await this.prisma.transaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { symbol: true, type: true, quantity: true, price: true, createdAt: true },
+    });
+
+    const holdings: Record<string, { qty: Decimal; lastPrice: Decimal }> = {};
+    const result: { timestamp: string; totalValue: string; totalInvested: string }[] = [];
+
+    for (const tx of allTxns) {
+      const txPrice = new Decimal(tx.price.toString());
+      const txQty = new Decimal(tx.quantity.toString());
+
+      if (!holdings[tx.symbol]) {
+        holdings[tx.symbol] = { qty: new Decimal(0), lastPrice: txPrice };
+      }
+      holdings[tx.symbol].lastPrice = txPrice;
+
+      if (tx.type === TransactionType.BUY) {
+        holdings[tx.symbol].qty = holdings[tx.symbol].qty.add(txQty);
+      } else {
+        holdings[tx.symbol].qty = holdings[tx.symbol].qty.sub(txQty);
+        if (holdings[tx.symbol].qty.lt(0)) holdings[tx.symbol].qty = new Decimal(0);
+      }
+
+      if (tx.createdAt >= from && tx.createdAt <= to) {
+        let value = new Decimal(0);
+        for (const h of Object.values(holdings)) {
+          if (h.qty.gt(0)) value = value.add(h.lastPrice.mul(h.qty));
+        }
+        result.push({
+          timestamp: tx.createdAt.toISOString(),
+          totalValue: value.toFixed(2),
+          totalInvested: totalInvested.toFixed(2),
+        });
+      }
+    }
+
+    return result;
+  }
+
+  // ── Realized Gains List ───────────────────────────────────────────────────
+
+  async getRealizedGainsList(userId: string) {
+    const [gains, buyTxns] = await Promise.all([
+      this.prisma.realizedGain.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.transaction.findMany({
+        where: { userId, type: TransactionType.BUY },
+        orderBy: { createdAt: 'asc' },
+        select: { symbol: true, createdAt: true },
+      }),
+    ]);
+
+    // First BUY date per symbol for hold-days calculation
+    const firstBuyBySymbol: Record<string, Date> = {};
+    for (const tx of buyTxns) {
+      if (!firstBuyBySymbol[tx.symbol]) firstBuyBySymbol[tx.symbol] = tx.createdAt;
+    }
+
+    const totalProfit    = gains.reduce((s, g) => s.add(new Decimal(g.profit.toString())), new Decimal(0));
+    const totalFees      = gains.reduce((s, g) => s.add(new Decimal(g.fees.toString())), new Decimal(0));
+    const totalQuantity  = gains.reduce((s, g) => s.add(new Decimal(g.quantity.toString())), new Decimal(0));
+    const totalCostBasis = gains.reduce(
+      (s, g) => s.add(new Decimal(g.avgPrice.toString()).mul(new Decimal(g.quantity.toString()))),
+      new Decimal(0),
+    );
+    const totalReturn = totalCostBasis.isZero() ? null : totalProfit.div(totalCostBasis).mul(100).toFixed(2);
+    const uniqueSymbols = new Set(gains.map((g) => g.symbol)).size;
+
+    // Average hold days: (sellDate - firstBuyDate) per gain, then average
+    const holdDaysArr: number[] = [];
+    const gainRecords = gains.map((g) => {
+      const profit    = new Decimal(g.profit.toString());
+      const sellPrice = new Decimal(g.sellPrice.toString());
+      const avgPrice  = new Decimal(g.avgPrice.toString());
+      const qty       = new Decimal(g.quantity.toString());
+      const costBasis = avgPrice.mul(qty);
+      const returnPct = costBasis.isZero() ? null : profit.div(costBasis).mul(100).toFixed(2);
+
+      const firstBuy = firstBuyBySymbol[g.symbol];
+      const holdDays = firstBuy
+        ? Math.max(0, Math.floor((g.createdAt.getTime() - firstBuy.getTime()) / 86400000))
+        : null;
+      if (holdDays != null) holdDaysArr.push(holdDays);
+
+      return {
+        id: g.id,
+        symbol: g.symbol,
+        quantity: qty.toFixed(2),
+        sellPrice: sellPrice.toFixed(2),
+        avgPrice: avgPrice.toFixed(2),
+        profit: profit.toFixed(2),
+        fees: g.fees.toFixed(2),
+        returnPct,
+        holdDays,
+        date: g.createdAt.toISOString(),
+      };
+    });
+
+    const avgHoldDays = holdDaysArr.length
+      ? Math.round(holdDaysArr.reduce((s, d) => s + d, 0) / holdDaysArr.length)
+      : null;
+
+    return {
+      gains: gainRecords,
+      summary: {
+        totalProfit:    totalProfit.toFixed(2),
+        totalFees:      totalFees.toFixed(2),
+        totalQuantity:  totalQuantity.toFixed(2),
+        totalCostBasis: totalCostBasis.toFixed(2),
+        totalReturn,
+        uniqueSymbols,
+        avgHoldDays,
+        count:     gains.length,
+        winCount:  gains.filter((g) => new Decimal(g.profit.toString()).gt(0)).length,
+        lossCount: gains.filter((g) => new Decimal(g.profit.toString()).lte(0)).length,
+      },
+    };
   }
 
   // ── Portfolio Allocation ──────────────────────────────────────────────────
@@ -941,5 +1192,89 @@ export class PortfolioService {
       .sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
 
     return { bySector, bySymbol };
+  }
+
+  // ── Closed Positions (full history of exited trades) ─────────────────────
+
+  async getClosedPositions(userId: string) {
+    const [positions, txns, gains] = await Promise.all([
+      this.positionsService.findByUser(userId),
+      this.prisma.transaction.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.realizedGain.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+    ]);
+
+    // Use RealizedGain as source — ALL symbols with any sell history (partial or full)
+    const symbolsWithGains = [...new Set(gains.map((g) => g.symbol))];
+    if (symbolsWithGains.length === 0) return [];
+
+    const positionMap = new Map(positions.map((p) => [p.symbol, p]));
+
+    return symbolsWithGains.map((symbol) => {
+      const pos = positionMap.get(symbol);
+      const symbolTxns = txns.filter((t) => t.symbol === symbol);
+      const symbolGains = gains.filter((g) => g.symbol === symbol);
+
+      const buyTxns = symbolTxns.filter((t) => t.type === TransactionType.BUY);
+      const sellTxns = symbolTxns.filter((t) => t.type === TransactionType.SELL);
+
+      const currentQty = pos ? new Decimal(pos.totalQuantity.toString()) : new Decimal(0);
+      const isClosed = currentQty.isZero();
+
+      // Cost basis = sum of (qty * price + fees) for all BUY transactions
+      const totalBuyCost = buyTxns.reduce(
+        (s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())).add((t as any).fees?.toString() ?? '0'),
+        new Decimal(0),
+      );
+      const totalProceeds = sellTxns.reduce(
+        (s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
+        new Decimal(0),
+      );
+      const totalFees = symbolTxns.reduce(
+        (s, t) => s.add((t as any).fees?.toString() ?? '0'),
+        new Decimal(0),
+      );
+      const totalProfit = symbolGains.reduce(
+        (s, g) => s.add(g.profit.toString()),
+        new Decimal(0),
+      );
+
+      // Cost of the portion that was sold (not total buy cost)
+      const totalSoldQty = symbolGains.reduce((s, g) => s.add(new Decimal(g.quantity.toString())), new Decimal(0));
+      const avgBuyPrice = buyTxns.length > 0
+        ? buyTxns.reduce((s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())), new Decimal(0))
+            .div(buyTxns.reduce((s, t) => s.add(new Decimal(t.quantity.toString())), new Decimal(0)))
+        : new Decimal(0);
+      const soldCostBasis = totalSoldQty.mul(avgBuyPrice);
+      const returnPct = soldCostBasis.isZero() ? null : totalProfit.div(soldCostBasis).mul(100).toFixed(2);
+
+      const openDate = buyTxns[0]?.createdAt?.toISOString() ?? null;
+      const closeDate = isClosed && sellTxns.length > 0 ? sellTxns[sellTxns.length - 1].createdAt.toISOString() : null;
+      const lastSellDate = sellTxns.length > 0 ? sellTxns[sellTxns.length - 1].createdAt.toISOString() : null;
+      const holdDays = openDate && closeDate
+        ? Math.floor((new Date(closeDate).getTime() - new Date(openDate).getTime()) / 86400000)
+        : null;
+
+      const winCount = symbolGains.filter((g) => new Decimal(g.profit.toString()).gt(0)).length;
+      const lossCount = symbolGains.length - winCount;
+
+      return {
+        symbol,
+        isClosed,
+        currentQty: currentQty.toFixed(8),
+        totalBuyCost: totalBuyCost.toFixed(2),
+        totalProceeds: totalProceeds.toFixed(2),
+        totalProfit: totalProfit.toFixed(2),
+        totalFees: totalFees.toFixed(2),
+        returnPct,
+        openDate,
+        closeDate,
+        lastSellDate,
+        holdDays,
+        buyCount: buyTxns.length,
+        sellCount: sellTxns.length,
+        winCount,
+        lossCount,
+      };
+    });
   }
 }

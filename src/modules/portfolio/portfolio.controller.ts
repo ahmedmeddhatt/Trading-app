@@ -100,4 +100,16 @@ export class PortfolioController {
   getAllocation(@Param('userId') userId: string) {
     return this.portfolioService.getAllocation(userId);
   }
+
+  @Get(':userId/closed-positions')
+  @UseGuards(JwtAuthGuard)
+  getClosedPositions(@Param('userId') userId: string) {
+    return this.portfolioService.getClosedPositions(userId);
+  }
+
+  @Get(':userId/realized-gains')
+  @UseGuards(JwtAuthGuard)
+  getRealizedGainsList(@Param('userId') userId: string) {
+    return this.portfolioService.getRealizedGainsList(userId);
+  }
 }
