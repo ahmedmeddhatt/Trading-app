@@ -75,9 +75,9 @@ export class PositionsService {
       }
 
       const avgPx = new Decimal(position.averagePrice.toString());
+      const prevInv = new Decimal(position.totalInvested.toString());
       const newQty = currQty.sub(qty);
-      const newInv = newQty.isZero() ? new Decimal(0) : newQty.mul(avgPx);
-      // Subtract sell fees from profit
+      const newInv = newQty.isZero() ? new Decimal(0) : prevInv.sub(qty.mul(avgPx)).sub(fees);
       const profit = px.sub(avgPx).mul(qty).sub(fees);
 
       const [updated] = await Promise.all([
