@@ -42,6 +42,17 @@ export class SchedulerService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    // Ensure DB partitions exist for the current and next month on startup
+    const today = new Date();
+    const nextMonth = new Date(today);
+    nextMonth.setUTCDate(today.getUTCDate() + 30);
+    void this.priceHistory.ensurePartitionExists(today).catch((e) =>
+      this.logger.error(`startup partition init failed: ${(e as Error).message}`)
+    );
+    void this.priceHistory.ensurePartitionExists(nextMonth).catch((e) =>
+      this.logger.error(`startup partition init failed: ${(e as Error).message}`)
+    );
+
     // Start all loops
     void this.runPriceLoop();
     void this.runListScrape();
@@ -176,13 +187,14 @@ export class SchedulerService implements OnModuleInit {
         if (fresh === 0) this.logger.error('archiver: all prices are stale — price-scraper may be broken');
       }
 
-      if (!isMarketOpen()) { this.logger.debug('archiver: outside market hours — skipping snapshot'); return; }
-
       const today = new Date();
       const nextMonth = new Date(today);
       nextMonth.setUTCDate(today.getUTCDate() + 30);
       await this.priceHistory.ensurePartitionExists(today);
       await this.priceHistory.ensurePartitionExists(nextMonth);
+
+      if (!isMarketOpen()) { this.logger.debug('archiver: outside market hours — skipping snapshot'); return; }
+
       await this.priceHistory.createSnapshots();
       this.logger.log('archiver: snapshot created');
     } catch (err) {

@@ -29,8 +29,8 @@ export class TechnicalAnalysisService {
       take: 500,
     });
 
-    if (history.length < 20) {
-      return { symbol: upperSymbol, error: 'Insufficient price history for technical analysis', minRequired: 20, available: history.length };
+    if (history.length < 2) {
+      return { symbol: upperSymbol, error: 'Insufficient price history for technical analysis', minRequired: 2, available: history.length };
     }
 
     const prices = history.map((h) => parseFloat(h.price.toString()));

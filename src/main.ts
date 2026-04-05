@@ -9,8 +9,11 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { validateRedisEnv } from './config/env-validation';
 
 async function bootstrap() {
+  console.log('[Bootstrap] Starting...');
   validateRedisEnv();
+  console.log('[Bootstrap] Creating NestJS app...');
   const app = await NestFactory.create(AppModule);
+  console.log('[Bootstrap] NestJS app created, configuring...');
   app.useLogger(app.get(Logger));
   const logger = app.get(Logger);
 
@@ -48,6 +51,7 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = process.env.PORT ?? 3000;
+  console.log(`[Bootstrap] Calling app.listen on port ${port}...`);
   await app.listen(port);
   logger.log(`Application listening on port ${port}`, 'Bootstrap');
 }

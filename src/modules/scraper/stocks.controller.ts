@@ -160,7 +160,7 @@ export class StocksController {
   ) {
     const sym = symbol.toUpperCase();
     const fromDate = from ? new Date(from) : new Date(0);
-    const toDate = to ? new Date(to) : new Date('9999-12-31');
+    const toDate = to ? new Date(to + 'T23:59:59.999Z') : new Date('9999-12-31');
 
     const rows = await this.prisma.$queryRaw<Array<{ price: number; timestamp: Date }>>`
       SELECT price::float8, timestamp
@@ -174,7 +174,7 @@ export class StocksController {
     return rows.map((r) => ({
       symbol: sym,
       timestamp: r.timestamp.toISOString(),
-      price: r.price.toString(),
+      price: r.price,
     }));
   }
 
