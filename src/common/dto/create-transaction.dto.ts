@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -33,4 +34,8 @@ export class CreateTransactionDto {
   @IsNumber({ maxDecimalPlaces: 8 })
   @Min(0)
   fees?: number;
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
 }

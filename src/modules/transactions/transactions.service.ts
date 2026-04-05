@@ -25,6 +25,7 @@ export class TransactionsService {
         quantity: new Decimal(dto.quantity),
         price: new Decimal(dto.price),
         fees: new Decimal(dto.fees ?? 0),
+        ...(dto.date ? { createdAt: new Date(dto.date) } : {}),
       },
     });
 

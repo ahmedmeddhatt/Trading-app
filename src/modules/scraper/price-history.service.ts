@@ -27,7 +27,7 @@ export class PriceHistoryService {
           symbol,
           price: parsed.price,
           changePercent: parsed.changePercent ?? null,
-          timestamp: parsed.timestamp ? new Date(parsed.timestamp) : now,
+          timestamp: now,
         });
       } catch {
         this.logger.warn(`Failed to parse price data for ${symbol}`);
