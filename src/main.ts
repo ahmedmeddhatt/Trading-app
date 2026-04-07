@@ -50,6 +50,17 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
+  // Run pending migrations on startup
+  const { PrismaService } = require('./database/prisma.service');
+  const prisma = app.get(PrismaService);
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE positions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE realized_gains ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`);
+    logger.log('Soft-delete migration completed', 'Bootstrap');
+  } catch (e) {
+    logger.error('Soft-delete migration failed', e, 'Bootstrap');
+  }
+
   const port = process.env.PORT ?? 3000;
   console.log(`[Bootstrap] Calling app.listen on port ${port}...`);
   await app.listen(port);
