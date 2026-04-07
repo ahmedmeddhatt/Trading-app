@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateUserDto } from '../../common/dto/create-user.dto';
-import { User } from '@prisma/client';
+import { User, InvestmentHorizon } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -30,5 +30,13 @@ export class UsersService {
         data: { email: dto.email, name: dto.name, passwordHash },
       }),
     );
+  }
+
+  async updatePreferences(id: string, preferences: { investmentHorizon?: InvestmentHorizon }) {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { investmentHorizon: preferences.investmentHorizon },
+    });
+    return this.strip(user);
   }
 }

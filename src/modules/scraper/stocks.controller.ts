@@ -3,6 +3,7 @@ import { StockStoreService } from './stock-store.service';
 import { RedisWriterService } from './redis-writer.service';
 import { PrismaService } from '../../database/prisma.service';
 import { TechnicalAnalysisService } from './technical-analysis.service';
+import { GeminiAnalysisService } from './services/gemini-analysis.service';
 
 @Controller('stocks')
 export class StocksController {
@@ -11,6 +12,7 @@ export class StocksController {
     private readonly redis: RedisWriterService,
     private readonly prisma: PrismaService,
     private readonly technicalAnalysis: TechnicalAnalysisService,
+    private readonly geminiAnalysis: GeminiAnalysisService,
   ) {}
 
   @Get('dashboard')
@@ -144,6 +146,18 @@ export class StocksController {
       total,
       page: parseInt(page, 10) || 1,
     };
+  }
+
+  @Get(':symbol/signal')
+  getAISignal(
+    @Param('symbol') symbol: string,
+    @Query('horizon') horizon?: string,
+  ) {
+    const validHorizons = ['SPECULATION', 'MID_TERM', 'LONG_TERM'] as const;
+    const h = validHorizons.includes(horizon as any)
+      ? (horizon as 'SPECULATION' | 'MID_TERM' | 'LONG_TERM')
+      : 'MID_TERM';
+    return this.geminiAnalysis.analyzeStock(symbol, h);
   }
 
   @Get(':symbol/technical')

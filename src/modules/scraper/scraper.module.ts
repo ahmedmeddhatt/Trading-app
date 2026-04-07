@@ -6,6 +6,8 @@ import { StockStoreService } from './stock-store.service';
 import { StockMetadataService } from './stock-metadata.service';
 import { PriceHistoryService } from './price-history.service';
 import { TechnicalAnalysisService } from './technical-analysis.service';
+import { NewsScraperService } from './services/news-scraper.service';
+import { GeminiAnalysisService } from './services/gemini-analysis.service';
 import { StocksController } from './stocks.controller';
 
 @Module({
@@ -18,6 +20,8 @@ import { StocksController } from './stocks.controller';
     StockMetadataService,
     PriceHistoryService,
     TechnicalAnalysisService,
+    NewsScraperService,
+    GeminiAnalysisService,
   ],
   exports: [RedisWriterService, SchedulerService],
 })
