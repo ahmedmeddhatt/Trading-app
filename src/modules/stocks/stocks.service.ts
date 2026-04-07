@@ -115,7 +115,7 @@ export class StocksService {
       const recommended = dbStocks.map((s) => ({
         symbol: s.symbol,
         name: s.name,
-        sector: s.sector,
+  
         marketCap: s.marketCap,
         pe: s.pe?.toString() ?? null,
         ...this.enrichWithLive(s.symbol, prices),
@@ -199,7 +199,7 @@ export class StocksService {
     return {
       symbol: stock.symbol,
       name: stock.name,
-      sector: stock.sector,
+
       marketCap: stock.marketCap,
       pe: stock.pe?.toString() ?? null,
       ...this.enrichWithLive(stock.symbol, prices),
@@ -209,7 +209,7 @@ export class StocksService {
   // ── Search / Filter ───────────────────────────────────────────────────────
 
   async searchStocks(query: StocksQueryDto) {
-    const { search, sector, minPE, maxPE, page = 1, limit = 20 } = query;
+    const { search, minPE, maxPE, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.StockWhereInput = {
@@ -219,7 +219,6 @@ export class StocksService {
           { name: { contains: search, mode: 'insensitive' } },
         ],
       }),
-      ...(sector && { sector: { contains: sector, mode: 'insensitive' } }),
       ...(minPE != null || maxPE != null
         ? { pe: { ...(minPE != null && { gte: minPE }), ...(maxPE != null && { lte: maxPE }) } }
         : {}),
@@ -235,7 +234,7 @@ export class StocksService {
     const data = stocks.map((s) => ({
       symbol: s.symbol,
       name: s.name,
-      sector: s.sector,
+
       marketCap: s.marketCap,
       pe: s.pe?.toString() ?? null,
       ...this.enrichWithLive(s.symbol, prices),

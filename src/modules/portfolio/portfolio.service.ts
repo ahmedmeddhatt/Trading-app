@@ -120,7 +120,10 @@ export class PortfolioService {
       breakEvenPrice: string; portfolioContributionPct: string;
     };
 
-    const positionData: PosData[] = positions.map((pos) => {
+    // Only include positions with a meaningful quantity (exclude fully sold)
+    const activePositions = positions.filter((p) => new Decimal(p.totalQuantity.toString()).gt(0));
+
+    const positionData: PosData[] = activePositions.map((pos) => {
       const qty = new Decimal(pos.totalQuantity.toString());
       const avgPx = new Decimal(pos.averagePrice.toString());
       const invested = new Decimal(pos.totalInvested.toString());
@@ -170,12 +173,21 @@ export class PortfolioService {
     }
 
     const withUnrealized = positionData.filter((p) => p.unrealizedRaw != null);
-    const best = withUnrealized.length
+    let best = withUnrealized.length
       ? withUnrealized.reduce((a, b) => (a.unrealizedRaw!.gt(b.unrealizedRaw!) ? a : b))
       : null;
-    const worst = withUnrealized.length
+    let worst = withUnrealized.length
       ? withUnrealized.reduce((a, b) => (a.unrealizedRaw!.lt(b.unrealizedRaw!) ? a : b))
       : null;
+
+    // If only one position, show it in the relevant card only
+    if (best && worst && best.symbol === worst.symbol) {
+      if (best.unrealizedRaw!.gte(0)) {
+        worst = null;
+      } else {
+        best = null;
+      }
+    }
 
     const closedPositions = realizedGains.length;
     const winners = realizedGains.filter((g) => new Decimal(g.profit.toString()).gt(0)).length;
@@ -617,14 +629,10 @@ export class PortfolioService {
   // ── Risk Analytics (Feature 4) ────────────────────────────────────────────
 
   async getRiskAnalytics(userId: string) {
-    const [positions, rawPrices, stocksData] = await Promise.all([
+    const [positions, rawPrices] = await Promise.all([
       this.positionsService.findByUser(userId),
       this.redis.hgetall('market:prices'),
-      this.prisma.stock.findMany({ select: { symbol: true, sector: true } }),
     ]);
-
-    const sectorMap: Record<string, string> = {};
-    for (const s of stocksData) sectorMap[s.symbol] = s.sector ?? 'Unknown';
 
     let totalPortfolioValue = new Decimal(0);
     const items = positions.map((pos) => {
@@ -659,22 +667,6 @@ export class PortfolioService {
     const top3Percent = totalPortfolioValue.isZero()
       ? '0.00'
       : top3Value.div(totalPortfolioValue).mul(100).toFixed(2);
-
-    // sector risk
-    const sectorValues: Record<string, Decimal> = {};
-    for (const item of items) {
-      const sector = sectorMap[item.symbol] ?? 'Unknown';
-      sectorValues[sector] = (sectorValues[sector] ?? new Decimal(0)).add(item.value);
-    }
-    const sectorRisk = Object.entries(sectorValues).map(([sector, value]) => {
-      const pct = totalPortfolioValue.isZero() ? new Decimal(0) : value.div(totalPortfolioValue).mul(100);
-      return {
-        sector,
-        value: value.toFixed(2),
-        percent: pct.toFixed(2),
-        hhi_contribution: pct.pow(2).toFixed(2),
-      };
-    }).sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
 
     // max drawdown from timeline (90 days)
     const from90 = new Date(Date.now() - 90 * 86400000);
@@ -718,7 +710,6 @@ export class PortfolioService {
         unrealizedPct: i.invested.isZero() ? '0.00' : i.unrealizedPnL.div(i.invested).mul(100).toFixed(2),
       })),
       drawdown,
-      sectorRisk,
     };
   }
 
@@ -1144,16 +1135,9 @@ export class PortfolioService {
 
   async getAllocation(userId: string) {
     const positions = await this.positionsService.findByUser(userId);
-    if (!positions.length) return { bySector: [], bySymbol: [] };
+    if (!positions.length) return { bySymbol: [] };
 
-    const symbols = positions.map((p) => p.symbol);
-    const [stocksData, rawPrices] = await Promise.all([
-      this.prisma.stock.findMany({ where: { symbol: { in: symbols } }, select: { symbol: true, sector: true } }),
-      this.redis.hgetall('market:prices'),
-    ]);
-
-    const sectorMap: Record<string, string> = {};
-    for (const s of stocksData) sectorMap[s.symbol] = s.sector ?? 'Unknown';
+    const rawPrices = await this.redis.hgetall('market:prices');
 
     let totalValue = new Decimal(0);
     const items: { symbol: string; value: Decimal; qty: Decimal; avgPx: Decimal; currPx: Decimal | null }[] = [];
@@ -1168,17 +1152,7 @@ export class PortfolioService {
       items.push({ symbol: pos.symbol, value, qty, avgPx, currPx });
     }
 
-    const sectorValues: Record<string, Decimal> = {};
-    for (const item of items) {
-      const sector = sectorMap[item.symbol] ?? 'Unknown';
-      sectorValues[sector] = (sectorValues[sector] ?? new Decimal(0)).add(item.value);
-    }
-
     const pct = (v: Decimal) => totalValue.isZero() ? '0.00' : v.div(totalValue).mul(100).toFixed(2);
-
-    const bySector = Object.entries(sectorValues)
-      .map(([sector, value]) => ({ sector, value: value.toFixed(2), percent: pct(value) }))
-      .sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
 
     const bySymbol = items
       .map((item) => ({
@@ -1191,7 +1165,7 @@ export class PortfolioService {
       }))
       .sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
 
-    return { bySector, bySymbol };
+    return { bySymbol };
   }
 
   // ── Closed Positions (full history of exited trades) ─────────────────────

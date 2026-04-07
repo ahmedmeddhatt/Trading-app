@@ -224,7 +224,6 @@ describe('PortfolioService', () => {
     it('returns empty arrays when user has no positions', async () => {
       mockPositionsService.findByUser.mockResolvedValue([]);
       const result = await service.getAllocation('user1');
-      expect(result.bySector).toHaveLength(0);
       expect(result.bySymbol).toHaveLength(0);
     });
 
@@ -262,21 +261,5 @@ describe('PortfolioService', () => {
       expect(parseFloat(result.bySymbol[0].value)).toBeCloseTo(500, 2);
     });
 
-    it('bySector percentages sum to 100', async () => {
-      mockPositionsService.findByUser.mockResolvedValue([
-        makePosition('COMI', '10', '50', '500'),
-        makePosition('HRHO', '5', '100', '500'),
-      ]);
-      mockPrisma.stock.findMany.mockResolvedValue([
-        { symbol: 'COMI', sector: 'Banking' },
-        { symbol: 'HRHO', sector: 'Banking' },
-      ]);
-      mockRedis.hgetall.mockResolvedValue({});
-
-      const result = await service.getAllocation('user1');
-      const total = result.bySector.reduce((sum, s) => sum + parseFloat(s.percent), 0);
-      expect(total).toBeCloseTo(100, 1);
-      expect(result.bySector[0].sector).toBe('Banking');
-    });
   });
 });

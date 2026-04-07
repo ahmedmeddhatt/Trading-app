@@ -26,7 +26,7 @@ export class StocksController {
       return {
         symbol: stock.symbol,
         name: stock.name,
-        sector: stock.sector,
+
         pe: (stock as any).pe ?? null,
         price: p?.price ?? null,
         changePercent: p?.changePercent ?? null,
@@ -98,7 +98,6 @@ export class StocksController {
   @Get()
   async list(
     @Query('search') search?: string,
-    @Query('sector') sector?: string,
     @Query('minPE') minPE?: string,
     @Query('maxPE') maxPE?: string,
     @Query('limit') limit = '50',
@@ -114,7 +113,7 @@ export class StocksController {
         { name: { contains: search, mode: 'insensitive' } },
       ];
     }
-    if (sector) where.sector = sector;
+
     if (minPE) where.pe = { ...((where.pe as object) ?? {}), gte: parseFloat(minPE) };
     if (maxPE) where.pe = { ...((where.pe as object) ?? {}), lte: parseFloat(maxPE) };
 
@@ -132,7 +131,7 @@ export class StocksController {
         return {
           symbol: s.symbol,
           name: s.name,
-          sector: s.sector,
+
           pe: s.pe ? parseFloat(s.pe.toString()) : null,
           marketCap: s.marketCap,
           price: p?.price ?? null,
