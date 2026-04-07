@@ -946,11 +946,45 @@ export class PortfolioService {
 
     const symbols = positions.map((p) => p.symbol);
     const qtyBySymbol: Record<string, Decimal> = {};
-    let totalInvested = new Decimal(0);
+    let currentTotalInvested = new Decimal(0);
     for (const p of positions) {
       qtyBySymbol[p.symbol] = new Decimal(p.totalQuantity.toString());
-      totalInvested = totalInvested.add(p.totalInvested);
+      currentTotalInvested = currentTotalInvested.add(p.totalInvested);
     }
+
+    // Build cumulative invested timeline from ALL transactions (including before `from`)
+    // so we know the invested amount at each point in time
+    const allTxns = await this.prisma.transaction.findMany({
+      where: { userId, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { symbol: true, type: true, quantity: true, price: true, createdAt: true },
+    });
+
+    // Build sorted array of { timestamp, cumulativeInvested }
+    let runningInvested = new Decimal(0);
+    const investedSnapshots: { timestamp: Date; invested: Decimal }[] = [];
+    for (const tx of allTxns) {
+      const txTotal = new Decimal(tx.price.toString()).mul(new Decimal(tx.quantity.toString()));
+      if (tx.type === TransactionType.BUY) {
+        runningInvested = runningInvested.add(txTotal);
+      } else {
+        runningInvested = runningInvested.sub(txTotal);
+        if (runningInvested.lt(0)) runningInvested = new Decimal(0);
+      }
+      investedSnapshots.push({ timestamp: tx.createdAt, invested: new Decimal(runningInvested.toString()) });
+    }
+
+    // Helper: find cumulative invested at a given timestamp via binary search
+    const getInvestedAt = (ts: Date): Decimal => {
+      if (investedSnapshots.length === 0) return currentTotalInvested;
+      let lo = 0, hi = investedSnapshots.length - 1, best = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (investedSnapshots[mid].timestamp <= ts) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      return best >= 0 ? investedSnapshots[best].invested : new Decimal(0);
+    };
 
     const history = await this.prisma.stockPriceHistory.findMany({
       where: { symbol: { in: symbols }, timestamp: { gte: from, lte: to } },
@@ -958,20 +992,20 @@ export class PortfolioService {
       select: { symbol: true, price: true, timestamp: true },
     });
 
-    const byTimestamp = new Map<string, Record<string, Decimal>>();
+    const byTimestamp = new Map<string, { priceMap: Record<string, Decimal>; date: Date }>();
     for (const h of history) {
       const key = h.timestamp.toISOString();
-      if (!byTimestamp.has(key)) byTimestamp.set(key, {});
-      byTimestamp.get(key)![h.symbol] = new Decimal(h.price.toString());
+      if (!byTimestamp.has(key)) byTimestamp.set(key, { priceMap: {}, date: h.timestamp });
+      byTimestamp.get(key)!.priceMap[h.symbol] = new Decimal(h.price.toString());
     }
 
-    const timeline = Array.from(byTimestamp.entries()).map(([timestamp, priceMap]) => {
+    const timeline = Array.from(byTimestamp.entries()).map(([timestamp, { priceMap, date }]) => {
       let totalValue = new Decimal(0);
       for (const symbol of symbols) {
         const px = priceMap[symbol];
         if (px) totalValue = totalValue.add(px.mul(qtyBySymbol[symbol]));
       }
-      return { timestamp, totalValue: totalValue.toFixed(2), totalInvested: totalInvested.toFixed(2) };
+      return { timestamp, totalValue: totalValue.toFixed(2), totalInvested: getInvestedAt(date).toFixed(2) };
     });
 
     // Always append current live prices from Redis as the "now" data point
@@ -990,7 +1024,7 @@ export class PortfolioService {
       if (hasAnyPrice) {
         const nowKey = new Date().toISOString();
         if (!byTimestamp.has(nowKey)) {
-          timeline.push({ timestamp: nowKey, totalValue: currentValue.toFixed(2), totalInvested: totalInvested.toFixed(2) });
+          timeline.push({ timestamp: nowKey, totalValue: currentValue.toFixed(2), totalInvested: currentTotalInvested.toFixed(2) });
         }
       }
     }
@@ -999,7 +1033,7 @@ export class PortfolioService {
 
     // If still < 2 points, fall back to transaction-based timeline
     if (timeline.length < 2) {
-      const txTimeline = await this.buildTransactionTimeline(userId, from, to, totalInvested);
+      const txTimeline = await this.buildTransactionTimeline(userId, from, to);
       if (txTimeline.length > 0) {
         const merged = [...timeline, ...txTimeline].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
         const seen = new Set<string>();
@@ -1015,7 +1049,6 @@ export class PortfolioService {
     userId: string,
     from: Date,
     to: Date,
-    totalInvested: Decimal,
   ): Promise<{ timestamp: string; totalValue: string; totalInvested: string }[]> {
     const allTxns = await this.prisma.transaction.findMany({
       where: { userId, deletedAt: null },
@@ -1024,11 +1057,13 @@ export class PortfolioService {
     });
 
     const holdings: Record<string, { qty: Decimal; lastPrice: Decimal }> = {};
+    let cumulativeInvested = new Decimal(0);
     const result: { timestamp: string; totalValue: string; totalInvested: string }[] = [];
 
     for (const tx of allTxns) {
       const txPrice = new Decimal(tx.price.toString());
       const txQty = new Decimal(tx.quantity.toString());
+      const txTotal = txPrice.mul(txQty);
 
       if (!holdings[tx.symbol]) {
         holdings[tx.symbol] = { qty: new Decimal(0), lastPrice: txPrice };
@@ -1037,9 +1072,12 @@ export class PortfolioService {
 
       if (tx.type === TransactionType.BUY) {
         holdings[tx.symbol].qty = holdings[tx.symbol].qty.add(txQty);
+        cumulativeInvested = cumulativeInvested.add(txTotal);
       } else {
         holdings[tx.symbol].qty = holdings[tx.symbol].qty.sub(txQty);
         if (holdings[tx.symbol].qty.lt(0)) holdings[tx.symbol].qty = new Decimal(0);
+        cumulativeInvested = cumulativeInvested.sub(txTotal);
+        if (cumulativeInvested.lt(0)) cumulativeInvested = new Decimal(0);
       }
 
       if (tx.createdAt >= from && tx.createdAt <= to) {
@@ -1050,7 +1088,7 @@ export class PortfolioService {
         result.push({
           timestamp: tx.createdAt.toISOString(),
           totalValue: value.toFixed(2),
-          totalInvested: totalInvested.toFixed(2),
+          totalInvested: cumulativeInvested.toFixed(2),
         });
       }
     }
