@@ -132,7 +132,7 @@ export class StocksService {
 
     let myStocks: unknown[] = [];
     if (userId) {
-      const positions = await this.prisma.position.findMany({ where: { userId } });
+      const positions = await this.prisma.position.findMany({ where: { userId, deletedAt: null } });
       myStocks = positions.map((pos) => ({
         symbol: pos.symbol,
         totalQuantity: pos.totalQuantity.toString(),

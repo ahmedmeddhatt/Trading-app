@@ -37,6 +37,7 @@ model Transaction {
   price     Decimal         @db.Decimal(18, 8)
   fees      Decimal         @default(0) @db.Decimal(18, 8)
   createdAt DateTime        @default(now()) @map("created_at")
+  deletedAt DateTime?       @map("deleted_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -46,12 +47,13 @@ model Transaction {
 }
 
 model Position {
-  id            String  @id @default(uuid())
-  userId        String  @map("user_id")
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
   symbol        String
-  totalQuantity Decimal @default(0) @map("total_quantity") @db.Decimal(18, 8)
-  averagePrice  Decimal @default(0) @map("average_price") @db.Decimal(18, 8)
-  totalInvested Decimal @default(0) @map("total_invested") @db.Decimal(18, 8)
+  totalQuantity Decimal   @default(0) @map("total_quantity") @db.Decimal(18, 8)
+  averagePrice  Decimal   @default(0) @map("average_price") @db.Decimal(18, 8)
+  totalInvested Decimal   @default(0) @map("total_invested") @db.Decimal(18, 8)
+  deletedAt     DateTime? @map("deleted_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -60,15 +62,16 @@ model Position {
 }
 
 model RealizedGain {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
   symbol    String
-  quantity  Decimal  @db.Decimal(18, 8)
-  sellPrice Decimal  @map("sell_price") @db.Decimal(18, 8)
-  avgPrice  Decimal  @map("avg_price") @db.Decimal(18, 8)
-  profit    Decimal  @db.Decimal(18, 8)
-  fees      Decimal  @default(0) @db.Decimal(18, 8)
-  createdAt DateTime @default(now()) @map("created_at")
+  quantity  Decimal   @db.Decimal(18, 8)
+  sellPrice Decimal   @map("sell_price") @db.Decimal(18, 8)
+  avgPrice  Decimal   @map("avg_price") @db.Decimal(18, 8)
+  profit    Decimal   @db.Decimal(18, 8)
+  fees      Decimal   @default(0) @db.Decimal(18, 8)
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

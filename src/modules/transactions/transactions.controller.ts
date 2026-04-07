@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Delete, Param } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from '../../common/dto/create-transaction.dto';
 
@@ -14,5 +14,11 @@ export class TransactionsController {
   @Get('user/:userId')
   findByUser(@Param('userId') userId: string) {
     return this.transactionsService.findByUser(userId);
+  }
+
+  @Delete(':id/user/:userId')
+  async softDelete(@Param('id') id: string, @Param('userId') userId: string) {
+    await this.transactionsService.softDelete(id, userId);
+    return { deleted: true };
   }
 }

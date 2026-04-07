@@ -28,11 +28,28 @@ export class PositionsService {
         where: { userId_symbol: { userId, symbol } },
       });
 
+      // Treat soft-deleted positions as non-existent for new transactions
+      const activePosition = position && !position.deletedAt ? position : null;
+
       if (type === TransactionType.BUY) {
         // Include fees in totalInvested so averagePrice reflects true cost basis
         const buyCost = qty.mul(px).add(fees);
-        if (!position) {
+        if (!activePosition) {
           const newAvg = buyCost.div(qty);
+          // If a soft-deleted position exists, revive it instead of creating a new one
+          if (position) {
+            const revived = await tx.position.update({
+              where: { userId_symbol: { userId, symbol } },
+              data: {
+                totalQuantity: qty.toFixed(8),
+                averagePrice: newAvg.toFixed(8),
+                totalInvested: buyCost.toFixed(8),
+                deletedAt: null,
+              },
+            });
+            this.logger.log(`Position revived: ${userId} | ${symbol} | qty=${qty} avgPrice=${newAvg}`);
+            return revived;
+          }
           const created = await tx.position.create({
             data: {
               userId,
@@ -46,8 +63,8 @@ export class PositionsService {
           return created;
         }
 
-        const prevQty = new Decimal(position.totalQuantity.toString());
-        const prevInv = new Decimal(position.totalInvested.toString());
+        const prevQty = new Decimal(activePosition.totalQuantity.toString());
+        const prevInv = new Decimal(activePosition.totalInvested.toString());
         const newQty = prevQty.add(qty);
         const newInv = prevInv.add(buyCost);
         const newAvg = newInv.div(newQty);
@@ -65,17 +82,17 @@ export class PositionsService {
       }
 
       // SELL
-      if (!position) {
+      if (!activePosition) {
         throw new Error(`Cannot sell ${symbol}: no existing position for user ${userId}`);
       }
 
-      const currQty = new Decimal(position.totalQuantity.toString());
+      const currQty = new Decimal(activePosition.totalQuantity.toString());
       if (qty.greaterThan(currQty)) {
         throw new Error(`Cannot sell ${qty} of ${symbol}: only ${currQty} held`);
       }
 
-      const avgPx = new Decimal(position.averagePrice.toString());
-      const prevInv = new Decimal(position.totalInvested.toString());
+      const avgPx = new Decimal(activePosition.averagePrice.toString());
+      const prevInv = new Decimal(activePosition.totalInvested.toString());
       const newQty = currQty.sub(qty);
       const newInv = newQty.isZero() ? new Decimal(0) : prevInv.sub(qty.mul(avgPx)).sub(fees);
       const profit = px.sub(avgPx).mul(qty).sub(fees);
@@ -109,14 +126,14 @@ export class PositionsService {
 
   async findByUser(userId: string): Promise<Position[]> {
     const positions = await this.prisma.position.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
     });
     return positions.filter((p) => !new Decimal(p.totalQuantity.toString()).isZero());
   }
 
   async findOne(userId: string, symbol: string): Promise<Position | null> {
-    return this.prisma.position.findUnique({
-      where: { userId_symbol: { userId, symbol } },
+    return this.prisma.position.findFirst({
+      where: { userId, symbol, deletedAt: null },
     });
   }
 }

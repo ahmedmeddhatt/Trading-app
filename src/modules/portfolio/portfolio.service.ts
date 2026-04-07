@@ -64,7 +64,7 @@ export class PortfolioService {
   async getAnalytics(userId: string) {
     const [positions, realizedGains, rawPrices, txGroups] = await Promise.all([
       this.positionsService.findByUser(userId),
-      this.prisma.realizedGain.findMany({ where: { userId } }),
+      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null } }),
       this.redis.hgetall('market:prices'),
       (this.prisma.transaction as any).groupBy({
         by: ['symbol'],
@@ -210,7 +210,7 @@ export class PortfolioService {
   // ── Transaction Detail (Feature 1) ────────────────────────────────────────
 
   async getTransactionDetail(userId: string, txId: string) {
-    const tx = await this.prisma.transaction.findFirst({ where: { id: txId, userId } });
+    const tx = await this.prisma.transaction.findFirst({ where: { id: txId, userId, deletedAt: null } });
     if (!tx) throw new NotFoundException('Transaction not found');
 
     const [priceAtTradeRow, allSymbolTxns, position, realizedGains, rawPrices] = await Promise.all([
@@ -220,11 +220,11 @@ export class PortfolioService {
         select: { price: true, timestamp: true },
       }),
       this.prisma.transaction.findMany({
-        where: { userId, symbol: tx.symbol },
+        where: { userId, symbol: tx.symbol, deletedAt: null },
         orderBy: { createdAt: 'asc' },
       }),
-      this.prisma.position.findUnique({ where: { userId_symbol: { userId, symbol: tx.symbol } } }),
-      this.prisma.realizedGain.findMany({ where: { userId, symbol: tx.symbol } }),
+      this.prisma.position.findFirst({ where: { userId, symbol: tx.symbol, deletedAt: null } }),
+      this.prisma.realizedGain.findMany({ where: { userId, symbol: tx.symbol, deletedAt: null } }),
       this.redis.hgetall('market:prices'),
     ]);
 
@@ -329,9 +329,9 @@ export class PortfolioService {
 
   async getPositionDetail(userId: string, symbol: string) {
     const [position, txns, realizedGains, priceHistory, rawPrices] = await Promise.all([
-      this.prisma.position.findUnique({ where: { userId_symbol: { userId, symbol } } }),
-      this.prisma.transaction.findMany({ where: { userId, symbol }, orderBy: { createdAt: 'asc' } }),
-      this.prisma.realizedGain.findMany({ where: { userId, symbol }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.position.findFirst({ where: { userId, symbol, deletedAt: null } }),
+      this.prisma.transaction.findMany({ where: { userId, symbol, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.realizedGain.findMany({ where: { userId, symbol, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
       this.prisma.stockPriceHistory.findMany({
         where: { symbol },
         orderBy: { timestamp: 'asc' },
@@ -542,7 +542,7 @@ export class PortfolioService {
     userId: string,
     filters: { symbol?: string; type?: string; from?: string; to?: string },
   ) {
-    const where: any = { userId };
+    const where: any = { userId, deletedAt: null };
     if (filters.symbol) where.symbol = filters.symbol.toUpperCase();
     if (filters.type) where.type = filters.type.toUpperCase();
     if (filters.from || filters.to) {
@@ -553,7 +553,7 @@ export class PortfolioService {
 
     const [txns, realizedGains] = await Promise.all([
       this.prisma.transaction.findMany({ where, orderBy: { createdAt: 'asc' } }),
-      this.prisma.realizedGain.findMany({ where: { userId } }),
+      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null } }),
     ]);
 
     let runningBalance = new Decimal(0);
@@ -748,7 +748,7 @@ export class PortfolioService {
 
   async getClosedTrades(userId: string) {
     const gains = await this.prisma.realizedGain.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -767,7 +767,7 @@ export class PortfolioService {
 
         // find matching BUY
         const buyTx = await this.prisma.transaction.findFirst({
-          where: { userId, symbol: g.symbol, type: TransactionType.BUY, createdAt: { lt: g.createdAt } },
+          where: { userId, symbol: g.symbol, type: TransactionType.BUY, deletedAt: null, createdAt: { lt: g.createdAt } },
           orderBy: { createdAt: 'desc' },
         });
 
@@ -904,11 +904,11 @@ export class PortfolioService {
   async getStockHistory(userId: string, symbol: string) {
     const [transactions, position, realizedGains] = await Promise.all([
       this.prisma.transaction.findMany({
-        where: { userId, symbol },
+        where: { userId, symbol, deletedAt: null },
         orderBy: { createdAt: 'asc' },
       }),
-      this.prisma.position.findUnique({ where: { userId_symbol: { userId, symbol } } }),
-      this.prisma.realizedGain.findMany({ where: { userId, symbol } }),
+      this.prisma.position.findFirst({ where: { userId, symbol, deletedAt: null } }),
+      this.prisma.realizedGain.findMany({ where: { userId, symbol, deletedAt: null } }),
     ]);
 
     let totalBought = new Decimal(0);
@@ -1021,7 +1021,7 @@ export class PortfolioService {
     totalInvested: Decimal,
   ): Promise<{ timestamp: string; totalValue: string; totalInvested: string }[]> {
     const allTxns = await this.prisma.transaction.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       orderBy: { createdAt: 'asc' },
       select: { symbol: true, type: true, quantity: true, price: true, createdAt: true },
     });
@@ -1065,9 +1065,9 @@ export class PortfolioService {
 
   async getRealizedGainsList(userId: string) {
     const [gains, buyTxns] = await Promise.all([
-      this.prisma.realizedGain.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
       this.prisma.transaction.findMany({
-        where: { userId, type: TransactionType.BUY },
+        where: { userId, type: TransactionType.BUY, deletedAt: null },
         orderBy: { createdAt: 'asc' },
         select: { symbol: true, createdAt: true },
       }),
@@ -1199,8 +1199,8 @@ export class PortfolioService {
   async getClosedPositions(userId: string) {
     const [positions, txns, gains] = await Promise.all([
       this.positionsService.findByUser(userId),
-      this.prisma.transaction.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
-      this.prisma.realizedGain.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.transaction.findMany({ where: { userId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
     ]);
 
     // Use RealizedGain as source — ALL symbols with any sell history (partial or full)
