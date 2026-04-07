@@ -108,9 +108,10 @@ export class PositionsService {
   }
 
   async findByUser(userId: string): Promise<Position[]> {
-    return this.prisma.position.findMany({
+    const positions = await this.prisma.position.findMany({
       where: { userId },
     });
+    return positions.filter((p) => !new Decimal(p.totalQuantity.toString()).isZero());
   }
 
   async findOne(userId: string, symbol: string): Promise<Position | null> {
