@@ -34,6 +34,45 @@ export class StocksService {
     return result;
   }
 
+  /**
+   * Fetch the most recent price from StockPriceHistory for each symbol.
+   * Used as a fallback when Redis has no live data.
+   */
+  private async getLatestDbPrices(): Promise<Record<string, LivePrice>> {
+    const rows = await this.prisma.$queryRaw<
+      { symbol: string; price: number; change_percent: number | null; timestamp: Date }[]
+    >`
+      SELECT DISTINCT ON (symbol)
+        symbol,
+        price::double precision as price,
+        change_percent::double precision as change_percent,
+        timestamp
+      FROM stock_price_history
+      ORDER BY symbol, timestamp DESC
+    `;
+    const result: Record<string, LivePrice> = {};
+    for (const row of rows) {
+      result[row.symbol] = {
+        price: row.price,
+        changePercent: row.change_percent ?? 0,
+        timestamp: row.timestamp instanceof Date ? row.timestamp.toISOString() : String(row.timestamp),
+      };
+    }
+    return result;
+  }
+
+  /**
+   * Merge live Redis prices with DB fallback prices.
+   * Redis prices take priority when available.
+   */
+  private async getAllPricesWithFallback(): Promise<Record<string, LivePrice>> {
+    const livePrices = await this.getAllLivePrices();
+    if (Object.keys(livePrices).length > 0) return livePrices;
+    // Redis empty — fall back to latest DB prices
+    this.logger.warn('No live prices in Redis, falling back to StockPriceHistory');
+    return this.getLatestDbPrices();
+  }
+
   private enrichWithLive(symbol: string, prices: Record<string, LivePrice>) {
     const live = prices[symbol];
     return {
@@ -47,7 +86,7 @@ export class StocksService {
 
   async getDashboard(userId?: string) {
     const cached = await this.redis.get(DASHBOARD_CACHE_KEY);
-    const prices = await this.getAllLivePrices();
+    const prices = await this.getAllPricesWithFallback();
 
     let base: { hottest: unknown[]; recommended: unknown[]; lowest: unknown[] };
 
@@ -156,7 +195,7 @@ export class StocksService {
   async getBySymbol(symbol: string) {
     const stock = await this.prisma.stock.findUnique({ where: { symbol } });
     if (!stock) return null;
-    const prices = await this.getAllLivePrices();
+    const prices = await this.getAllPricesWithFallback();
     return {
       symbol: stock.symbol,
       name: stock.name,
@@ -191,7 +230,7 @@ export class StocksService {
       this.prisma.stock.count({ where }),
     ]);
 
-    const prices = await this.getAllLivePrices();
+    const prices = await this.getAllPricesWithFallback();
 
     const data = stocks.map((s) => ({
       symbol: s.symbol,
