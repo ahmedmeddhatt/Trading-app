@@ -14,16 +14,18 @@ const MARKET_CLOSE_MIN = 14 * 60 + 30;
 const DELAY_MARKET_OPEN = 30_000;
 const DELAY_MARKET_CLOSED = 2 * 60 * 60 * 1_000;
 const LIST_INTERVAL = 24 * 60 * 60 * 1_000;
-const ARCHIVER_INTERVAL = 60 * 60 * 1_000;
+const DAILY_ARCHIVE_HOUR = 15; // 3 PM Cairo time (after market close at 14:30)
 
-function cairominutes(): number {
+function cairoTime(): { hours: number; minutes: number; totalMinutes: number } {
   const now = new Date();
-  return ((now.getUTCHours() + 2) % 24) * 60 + now.getUTCMinutes();
+  const hours = (now.getUTCHours() + 2) % 24;
+  const minutes = now.getUTCMinutes();
+  return { hours, minutes, totalMinutes: hours * 60 + minutes };
 }
 
 function isMarketOpen(): boolean {
-  const m = cairominutes();
-  return m >= MARKET_OPEN_MIN && m <= MARKET_CLOSE_MIN;
+  const { totalMinutes } = cairoTime();
+  return totalMinutes >= MARKET_OPEN_MIN && totalMinutes <= MARKET_CLOSE_MIN;
 }
 
 @Injectable()
@@ -31,6 +33,8 @@ export class SchedulerService implements OnModuleInit {
   private readonly logger = new Logger(SchedulerService.name);
   private priceTimer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  private firstPriceScrapeArchived = false;
+  private lastArchiveDate: string | null = null;
 
   constructor(
     private readonly eventEmitter: EventEmitter2,
@@ -57,8 +61,9 @@ export class SchedulerService implements OnModuleInit {
     void this.runPriceLoop();
     void this.runListScrape();
     setInterval(() => void this.runListScrape(), LIST_INTERVAL);
-    void this.runArchiver();
-    setInterval(() => void this.runArchiver(), ARCHIVER_INTERVAL);
+    // Check for daily archive every 10 minutes (low Redis overhead — no Redis call unless it's time)
+    setInterval(() => void this.checkDailyArchive(), 10 * 60 * 1_000);
+    void this.checkDailyArchive();
   }
 
   // ─── Price scraper (self-chaining setTimeout) ─────────────────────────────
@@ -129,6 +134,12 @@ export class SchedulerService implements OnModuleInit {
       const records = await this.stockStore.buildOutput();
       this.stockStore.writeFiles(records);
       this.logger.log(`price-scraper: wrote ${publishBatch.length} prices`);
+
+      // On first successful scrape, immediately archive to seed price history
+      if (!this.firstPriceScrapeArchived && publishBatch.length > 0) {
+        this.firstPriceScrapeArchived = true;
+        void this.runArchiver().catch(() => {});
+      }
     } catch (err) {
       this.logger.error(`price-scraper failed: ${(err as Error).message}`);
     }
@@ -172,31 +183,44 @@ export class SchedulerService implements OnModuleInit {
     }
   }
 
-  // ─── Archiver ─────────────────────────────────────────────────────────────
+  // ─── Daily Archiver ────────────────────────────────────────────────────────
+
+  /**
+   * Checks if it's time for the daily snapshot (once per day after market close).
+   * Only hits Redis when it's actually time to archive — the time check is pure CPU.
+   */
+  private async checkDailyArchive(): Promise<void> {
+    const { hours } = cairoTime();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // Already archived today
+    if (this.lastArchiveDate === todayStr) return;
+
+    // EGX is closed on Friday (day 5) and Saturday (day 6)
+    const dayOfWeek = new Date().getDay();
+    if (dayOfWeek === 5 || dayOfWeek === 6) return;
+
+    // Only archive after the configured hour (market closes at 14:30, archive at 15:00)
+    if (hours < DAILY_ARCHIVE_HOUR) return;
+
+    await this.runArchiver();
+  }
 
   async runArchiver(): Promise<void> {
-    try {
-      // Health check
-      const raw = await this.redisWriter.hgetall('market:prices');
-      const entries = Object.values(raw ?? {});
-      if (entries.length > 0) {
-        const fresh = entries.filter((j) => {
-          try { const p = JSON.parse(j); return p?.timestamp && Date.now() - new Date(p.timestamp).getTime() <= 5 * 60_000; }
-          catch { return false; }
-        }).length;
-        if (fresh === 0) this.logger.error('archiver: all prices are stale — price-scraper may be broken');
-      }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    // Prevent duplicate archives for same day (first-scrape + daily check)
+    if (this.lastArchiveDate === todayStr) return;
 
+    try {
       const today = new Date();
       const nextMonth = new Date(today);
       nextMonth.setUTCDate(today.getUTCDate() + 30);
       await this.priceHistory.ensurePartitionExists(today);
       await this.priceHistory.ensurePartitionExists(nextMonth);
 
-      if (!isMarketOpen()) { this.logger.debug('archiver: outside market hours — skipping snapshot'); return; }
-
-      await this.priceHistory.createSnapshots();
-      this.logger.log('archiver: snapshot created');
+      const count = await this.priceHistory.createDailySnapshot();
+      this.lastArchiveDate = todayStr;
+      this.logger.log(`archiver: daily snapshot created (${count} records)`);
     } catch (err) {
       this.logger.error(`archiver failed: ${(err as Error).message}`);
     }

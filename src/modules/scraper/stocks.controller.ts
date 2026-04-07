@@ -203,7 +203,7 @@ export class StocksController {
         FROM stock_price_history
         WHERE symbol = ${sym}
         ORDER BY timestamp ASC
-        LIMIT 30
+        LIMIT 500
       `,
     ]);
 
@@ -212,6 +212,20 @@ export class StocksController {
     }
 
     const p = priceRaw ? JSON.parse(priceRaw) : null;
+
+    // Build price history — include live price if DB history is sparse
+    const history = historyRows.map((r) => ({
+      timestamp: r.timestamp.toISOString(),
+      price: r.price,
+    }));
+    if (p?.price != null) {
+      const liveTs = p.timestamp ? new Date(p.timestamp as number).toISOString() : new Date().toISOString();
+      // Append live price as latest point if not already the last entry
+      const lastTs = history.length ? history[history.length - 1].timestamp : null;
+      if (!lastTs || new Date(liveTs).getTime() - new Date(lastTs).getTime() > 60_000) {
+        history.push({ timestamp: liveTs, price: p.price });
+      }
+    }
 
     return {
       symbol: stock.symbol,
@@ -224,10 +238,7 @@ export class StocksController {
       lastUpdate: p?.timestamp ? new Date(p.timestamp as number).toISOString() : null,
       recommendation: p?.recommendation ?? null,
       signals: p?.signals ?? { daily: null, weekly: null, monthly: null },
-      priceHistory: historyRows.map((r) => ({
-        timestamp: r.timestamp.toISOString(),
-        price: r.price,
-      })),
+      priceHistory: history,
     };
   }
 }

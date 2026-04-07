@@ -189,9 +189,15 @@ export class PortfolioService {
       }
     }
 
-    const closedPositions = realizedGains.length;
-    const winners = realizedGains.filter((g) => new Decimal(g.profit.toString()).gt(0)).length;
-    const winRate = closedPositions > 0 ? ((winners / closedPositions) * 100).toFixed(1) : null;
+    // Win rate = total realized profit / total capital ever invested from account start
+    const closedCostBasis = realizedGains.reduce(
+      (sum, g) => sum.add(new Decimal(g.quantity.toString()).mul(new Decimal(g.avgPrice.toString()))),
+      new Decimal(0),
+    );
+    const totalEverInvested = totalInvested.add(closedCostBasis);
+    const winRate = totalEverInvested.gt(0)
+      ? totalRealized.div(totalEverInvested).mul(100).toFixed(1)
+      : null;
 
     const totalPnL = totalRealized.add(totalUnrealized);
     const totalPortfolioReturn = totalInvested.isZero()

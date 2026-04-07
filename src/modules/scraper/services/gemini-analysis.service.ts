@@ -72,60 +72,70 @@ export class GeminiAnalysisService {
       this.getExternalSignals(upperSymbol),
     ]);
 
-    if (!technicalData || technicalData.error) {
-      return this.buildFallbackResult(upperSymbol, horizon, externalSignals);
+    const hasTechnical = technicalData && !technicalData.error;
+
+    // If Gemini is available, always call it — even without technical data
+    if (this.genAI) {
+      try {
+        // Get live price from Redis if technical data is missing
+        let livePrice: number | null = null;
+        if (!hasTechnical) {
+          const priceMap = await this.redis.hgetall('market:prices');
+          const priceData = priceMap[upperSymbol] ? JSON.parse(priceMap[upperSymbol]) : null;
+          livePrice = priceData?.price ?? null;
+        }
+
+        const result = await this.callGemini(
+          upperSymbol, hasTechnical ? technicalData : null, stock, sectorStocks,
+          news, marketNews, horizon, externalSignals, livePrice,
+        );
+
+        // Cache for 2 hours
+        await this.redis.setex(cacheKey, 7200, JSON.stringify(result));
+        return result;
+      } catch (err) {
+        this.logger.error(`Gemini analysis failed for ${upperSymbol}: ${(err as Error).message}`);
+        // Fall through to technical fallback or basic fallback
+      }
     }
 
-    // If Gemini is not available, use enhanced technical fallback
-    if (!this.genAI) {
+    // Fallback: use technical analysis if available
+    if (hasTechnical) {
       return this.buildEnhancedTechnicalResult(technicalData, stock, sectorStocks, horizon, externalSignals);
     }
 
-    try {
-      const result = await this.callGemini(
-        upperSymbol, technicalData, stock, sectorStocks, news, marketNews, horizon, externalSignals,
-      );
-
-      // Cache for 2 hours
-      await this.redis.setex(cacheKey, 7200, JSON.stringify(result));
-      return result;
-    } catch (err) {
-      this.logger.error(`Gemini analysis failed for ${upperSymbol}: ${(err as Error).message}`);
-      return this.buildEnhancedTechnicalResult(technicalData, stock, sectorStocks, horizon, externalSignals);
-    }
+    return this.buildFallbackResult(upperSymbol, horizon, externalSignals);
   }
 
   private async callGemini(
     symbol: string,
-    technical: any,
+    technical: any | null,
     stock: any,
     sectorData: { avgPE: number | null; stockCount: number },
     news: any[],
     marketNews: any[],
     horizon: Horizon,
     externalSignals: any,
+    livePrice?: number | null,
   ): Promise<AISignalResult> {
     const model = this.genAI!.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const priceHistory = technical.priceHistory
+    const currentPrice = technical?.currentPrice ?? livePrice ?? 'N/A';
+
+    const priceHistory = technical?.priceHistory
       ?.slice(-30)
       .map((p: any) => `${p.timestamp.split('T')[0]}: ${p.price}`)
-      .join('\n') ?? 'N/A';
+      .join('\n') ?? 'No price history available yet';
 
     const newsText = [...news, ...marketNews]
       .slice(0, 10)
       .map((n: any) => `- ${n.title} (${n.source})`)
       .join('\n') || 'No recent news available';
 
-    const prompt = `You are an expert Egyptian stock market (EGX) analyst. Provide a precise trading recommendation based on comprehensive analysis.
-
-STOCK: ${symbol} - ${stock?.name ?? 'Unknown'}
-SECTOR: ${stock?.sector ?? 'Unknown'}
-CURRENT PRICE: ${technical.currentPrice} EGP
-P/E RATIO: ${stock?.pe ?? 'N/A'}${sectorData.avgPE ? ` (Sector average: ${sectorData.avgPE.toFixed(2)}, ${sectorData.stockCount} stocks)` : ''}
-MARKET CAP: ${stock?.marketCap ?? 'N/A'}
-
-TECHNICAL INDICATORS:
+    // Build technical section dynamically
+    let technicalSection: string;
+    if (technical) {
+      technicalSection = `TECHNICAL INDICATORS:
 - RSI(14): ${technical.indicators.rsi14.value ?? 'N/A'} (${technical.indicators.rsi14.zone})
 - MACD: ${technical.indicators.macd.value ?? 'N/A'} vs Signal: ${technical.indicators.macd.signal ?? 'N/A'} (${technical.indicators.macd.trend})
 - SMA20: ${technical.indicators.sma20 ?? 'N/A'}
@@ -147,7 +157,22 @@ SUPPORT & RESISTANCE:
 - Supports: ${technical.supportResistance.supports.join(', ') || 'N/A'}
 - Resistances: ${technical.supportResistance.resistances.join(', ') || 'N/A'}
 
-EXISTING TECHNICAL SIGNAL: ${technical.overallSignal.action} (score: ${technical.overallSignal.score}, confidence: ${technical.overallSignal.confidence})
+EXISTING TECHNICAL SIGNAL: ${technical.overallSignal.action} (score: ${technical.overallSignal.score}, confidence: ${technical.overallSignal.confidence})`;
+    } else {
+      technicalSection = `TECHNICAL INDICATORS: Not available yet (insufficient price history)
+NOTE: Base your analysis on fundamentals, EgxPilot signals, sector data, news, and current price. Be explicit that technical analysis is limited.`;
+    }
+
+    const prompt = `You are an expert Egyptian stock market (EGX) analyst. Provide a precise trading recommendation based on ALL available data.
+
+STOCK: ${symbol} - ${stock?.name ?? 'Unknown'}
+SECTOR: ${stock?.sector ?? 'Unknown'}
+CURRENT PRICE: ${currentPrice} EGP
+P/E RATIO: ${stock?.pe ?? 'N/A'}${sectorData.avgPE ? ` (Sector average: ${sectorData.avgPE.toFixed(2)}, ${sectorData.stockCount} stocks)` : ''}
+MARKET CAP: ${stock?.marketCap ?? 'N/A'}
+
+${technicalSection}
+
 EGXPILOT SIGNALS: Daily=${externalSignals?.daily ?? 'N/A'}, Weekly=${externalSignals?.weekly ?? 'N/A'}, Monthly=${externalSignals?.monthly ?? 'N/A'}
 
 PRICE HISTORY (last 30 data points):
@@ -159,10 +184,10 @@ ${newsText}
 INVESTMENT HORIZON: ${HORIZON_LABELS[horizon]}
 
 Based on ALL the above data, provide your analysis. Consider:
-1. Technical indicator convergence/divergence
+1. ${technical ? 'Technical indicator convergence/divergence' : 'EgxPilot signal consensus (daily/weekly/monthly agreement)'}
 2. Fundamental valuation vs sector
-3. Price momentum and trend strength
-4. Support/resistance proximity
+3. ${technical ? 'Price momentum and trend strength' : 'Current price level and market sentiment'}
+4. ${technical ? 'Support/resistance proximity' : 'Sector performance and positioning'}
 5. News sentiment impact
 6. Risk/reward for the specified investment horizon
 

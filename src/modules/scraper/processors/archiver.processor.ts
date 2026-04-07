@@ -33,7 +33,7 @@ export class ArchiverProcessor extends WorkerHost {
     await this.priceHistory.ensurePartitionExists(nextMonth);
 
     this.logger.log('Running price snapshot archival...');
-    await this.priceHistory.createSnapshots();
+    await this.priceHistory.createDailySnapshot();
   }
 
   private async checkPriceHealth(): Promise<void> {

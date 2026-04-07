@@ -12,17 +12,48 @@ export class PriceHistoryService {
     private readonly redis: RedisWriterService,
   ) {}
 
-  async createSnapshots(): Promise<void> {
-    const raw = await this.redis.hgetall('market:prices');
-    if (!raw || Object.keys(raw).length === 0) return;
+  /**
+   * Creates one daily snapshot per symbol. Checks that:
+   * 1. No snapshot already exists for today (prevents duplicates on restart)
+   * 2. Redis prices are fresh (from today's session, not stale from yesterday)
+   * Returns the number of records inserted.
+   */
+  async createDailySnapshot(): Promise<number> {
+    // Check if we already have snapshots for today
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setUTCHours(23, 59, 59, 999);
 
-    const records: { symbol: string; price: number; changePercent: number | null; timestamp: Date }[] = [];
+    const existingToday = await this.prisma.stockPriceHistory.count({
+      where: { timestamp: { gte: todayStart, lte: todayEnd } },
+    });
+    if (existingToday > 0) {
+      this.logger.log(`Archiver: ${existingToday} snapshots already exist for today — skipping`);
+      return 0;
+    }
+
+    const raw = await this.redis.hgetall('market:prices');
+    if (!raw || Object.keys(raw).length === 0) {
+      this.logger.warn('Archiver: no prices in Redis — skipping');
+      return 0;
+    }
+
     const now = new Date();
+    const maxAgeMs = 6 * 60 * 60 * 1_000; // 6 hours — prices must be from today's session
+    const records: { symbol: string; price: number; changePercent: number | null; timestamp: Date }[] = [];
 
     for (const [symbol, json] of Object.entries(raw)) {
       try {
         const parsed = JSON.parse(json) as { price?: number; changePercent?: number; timestamp?: string };
         if (parsed.price == null) continue;
+
+        // Skip stale prices (e.g. from yesterday if scraper failed today)
+        if (parsed.timestamp) {
+          const age = now.getTime() - new Date(parsed.timestamp).getTime();
+          if (age > maxAgeMs) continue;
+        }
+
         records.push({
           symbol,
           price: parsed.price,
@@ -34,7 +65,10 @@ export class PriceHistoryService {
       }
     }
 
-    if (records.length === 0) return;
+    if (records.length === 0) {
+      this.logger.warn('Archiver: all prices are stale or missing — skipping');
+      return 0;
+    }
 
     const existingSymbols = await this.prisma.stock.findMany({ select: { symbol: true } });
     const validSymbols = new Set(existingSymbols.map((s) => s.symbol));
@@ -42,15 +76,13 @@ export class PriceHistoryService {
 
     if (validRecords.length === 0) {
       this.logger.warn('Archiver: no valid symbols to archive (stocks table may be empty)');
-      return;
+      return 0;
     }
 
-    await this.prisma.stockPriceHistory.createMany({
-      data: validRecords,
-      skipDuplicates: true,
-    });
+    await this.prisma.stockPriceHistory.createMany({ data: validRecords });
 
     this.logger.log(`Archived ${validRecords.length} price snapshots (${records.length - validRecords.length} skipped — not in stocks table)`);
+    return validRecords.length;
   }
 
   async getPriceAtTimestamp(symbol: string, date: Date) {

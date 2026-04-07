@@ -143,27 +143,29 @@ describe('PortfolioService', () => {
       expect(parseFloat(result.worstPerformer!.unrealizedPnL!)).toBeLessThan(0);
     });
 
-    it('edge case: winRate is "0.0%" with 0 closed positions, not NaN', async () => {
+    it('edge case: winRate is null with 0 invested', async () => {
       mockPositionsService.findByUser.mockResolvedValue([]);
       mockPrisma.realizedGain.findMany.mockResolvedValue([]);
       mockRedis.hgetall.mockResolvedValue({});
 
       const result = await service.getAnalytics(userId);
-      expect(result.winRate).toBeNull(); // null when no closed positions
+      expect(result.winRate).toBeNull();
     });
 
-    it('computes winRate correctly with mixed realizedGains', async () => {
+    it('computes winRate as realized profit / total ever invested', async () => {
       mockPositionsService.findByUser.mockResolvedValue([]);
       mockPrisma.realizedGain.findMany.mockResolvedValue([
-        { symbol: 'COMI', profit: new Decimal('100') },
-        { symbol: 'HRHO', profit: new Decimal('-50') },
-        { symbol: 'EFIH', profit: new Decimal('200') },
+        { symbol: 'COMI', quantity: new Decimal('10'), avgPrice: new Decimal('50'), profit: new Decimal('100') },
+        { symbol: 'HRHO', quantity: new Decimal('5'), avgPrice: new Decimal('100'), profit: new Decimal('-50') },
+        { symbol: 'EFIH', quantity: new Decimal('20'), avgPrice: new Decimal('25'), profit: new Decimal('200') },
       ]);
       mockRedis.hgetall.mockResolvedValue({});
 
       const result = await service.getAnalytics(userId);
-      // 2 winners out of 3 = 66.7%
-      expect(result.winRate).toBe('66.7%');
+      // totalRealized = 100 + (-50) + 200 = 250
+      // closedCostBasis = 10*50 + 5*100 + 20*25 = 500 + 500 + 500 = 1500
+      // winRate = 250 / 1500 * 100 = 16.7%
+      expect(result.winRate).toBe('16.7%');
     });
 
     it('JWT payload check: totalPortfolioReturn is percentage string or null', async () => {

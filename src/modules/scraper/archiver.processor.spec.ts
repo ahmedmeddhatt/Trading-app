@@ -10,7 +10,7 @@ import { RedisWriterService } from './redis-writer.service';
 
 const mockPriceHistory = {
   ensurePartitionExists: jest.fn().mockResolvedValue(undefined),
-  createSnapshots: jest.fn().mockResolvedValue(undefined),
+  createDailySnapshot: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockRedisWriter = {
@@ -110,7 +110,7 @@ describe('ArchiverProcessor', () => {
 
       await processor.process(fakeJob);
 
-      expect(mockPriceHistory.createSnapshots).not.toHaveBeenCalled();
+      expect(mockPriceHistory.createDailySnapshot).not.toHaveBeenCalled();
     });
 
     it('runs archival when inside market hours', async () => {
@@ -120,7 +120,7 @@ describe('ArchiverProcessor', () => {
       await processor.process(fakeJob);
 
       expect(mockPriceHistory.ensurePartitionExists).toHaveBeenCalledTimes(2);
-      expect(mockPriceHistory.createSnapshots).toHaveBeenCalledTimes(1);
+      expect(mockPriceHistory.createDailySnapshot).toHaveBeenCalledTimes(1);
     });
 
     it('calls ensurePartitionExists for today and today+30d', async () => {

@@ -33,6 +33,7 @@ const testUser = {
   resetTokenExpiry: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+  investmentHorizon: null,
 };
 
 describe('AuthService', () => {
