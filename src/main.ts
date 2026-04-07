@@ -50,22 +50,6 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  // Run pending migrations on startup using direct connection (not pooled)
-  const { PrismaClient } = require('@prisma/client');
-  const directPrisma = new PrismaClient({
-    datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
-  });
-  try {
-    await directPrisma.$connect();
-    await directPrisma.$executeRawUnsafe(`ALTER TABLE positions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`);
-    await directPrisma.$executeRawUnsafe(`ALTER TABLE realized_gains ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL`);
-    logger.log('Soft-delete migration completed', 'Bootstrap');
-  } catch (e) {
-    logger.error('Soft-delete migration failed', e, 'Bootstrap');
-  } finally {
-    await directPrisma.$disconnect();
-  }
-
   const port = process.env.PORT ?? 3000;
   console.log(`[Bootstrap] Calling app.listen on port ${port}...`);
   await app.listen(port);
