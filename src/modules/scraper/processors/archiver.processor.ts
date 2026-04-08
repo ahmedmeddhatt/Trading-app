@@ -44,8 +44,11 @@ export class ArchiverProcessor extends WorkerHost {
         if (!parsed?.timestamp) continue;
         const age = now - new Date(parsed.timestamp).getTime();
         if (age <= STALE_MS) fresh++;
-        if (!oldestUpdate || parsed.timestamp < oldestUpdate) oldestUpdate = parsed.timestamp;
-      } catch { /* skip */ }
+        if (!oldestUpdate || parsed.timestamp < oldestUpdate)
+          oldestUpdate = parsed.timestamp;
+      } catch {
+        /* skip */
+      }
     }
 
     if (fresh === 0) {

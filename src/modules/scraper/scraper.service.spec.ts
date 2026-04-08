@@ -87,7 +87,9 @@ describe('ScraperService', () => {
       await service.onModuleInit();
 
       const addCalls = priceQueue.add.mock.calls;
-      const repeatJob = addCalls.find((c: any[]) => c[2]?.repeat?.every === 30_000);
+      const repeatJob = addCalls.find(
+        (c: any[]) => c[2]?.repeat?.every === 30_000,
+      );
       expect(repeatJob).toBeDefined();
     });
 
@@ -96,8 +98,10 @@ describe('ScraperService', () => {
 
       const addCalls = priceQueue.add.mock.calls;
       // All price-scraper jobs should have exponential backoff
-      const jobWithBackoff = addCalls.find((c: any[]) =>
-        c[2]?.backoff?.type === 'exponential' && c[2]?.backoff?.delay === 5_000,
+      const jobWithBackoff = addCalls.find(
+        (c: any[]) =>
+          c[2]?.backoff?.type === 'exponential' &&
+          c[2]?.backoff?.delay === 5_000,
       );
       expect(jobWithBackoff).toBeDefined();
     });
@@ -106,7 +110,9 @@ describe('ScraperService', () => {
       await service.onModuleInit();
 
       const addCalls = listQueue.add.mock.calls;
-      const repeatJob = addCalls.find((c: any[]) => c[2]?.repeat?.every === 24 * 60 * 60 * 1_000);
+      const repeatJob = addCalls.find(
+        (c: any[]) => c[2]?.repeat?.every === 24 * 60 * 60 * 1_000,
+      );
       expect(repeatJob).toBeDefined();
     });
 
@@ -114,7 +120,9 @@ describe('ScraperService', () => {
       await service.onModuleInit();
 
       const addCalls = archiverQueue.add.mock.calls;
-      const repeatJob = addCalls.find((c: any[]) => c[2]?.repeat?.every === 60 * 60 * 1_000);
+      const repeatJob = addCalls.find(
+        (c: any[]) => c[2]?.repeat?.every === 60 * 60 * 1_000,
+      );
       expect(repeatJob).toBeDefined();
     });
 
@@ -122,7 +130,9 @@ describe('ScraperService', () => {
       await service.onModuleInit();
 
       const addCalls = priceQueue.add.mock.calls;
-      const withRemoveOnFail = addCalls.find((c: any[]) => c[2]?.removeOnFail === 50);
+      const withRemoveOnFail = addCalls.find(
+        (c: any[]) => c[2]?.removeOnFail === 50,
+      );
       expect(withRemoveOnFail).toBeDefined();
     });
   });

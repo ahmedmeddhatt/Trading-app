@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RedisWriterService } from './redis-writer.service';
-import { BaseStock, StockDetails, StockRecord, NewsItem } from './types/stock.types';
+import {
+  BaseStock,
+  StockDetails,
+  StockRecord,
+  NewsItem,
+} from './types/stock.types';
 
 @Injectable()
 export class StockStoreService {
@@ -12,7 +17,10 @@ export class StockStoreService {
   private listCache: BaseStock[] | null = null;
   private readonly detailsCache = new Map<string, StockDetails>();
   private readonly prevPricesCache = new Map<string, number>();
-  private readonly priceDataCache = new Map<string, { price: number; changePercent: number; news: NewsItem[] }>();
+  private readonly priceDataCache = new Map<
+    string,
+    { price: number; changePercent: number; news: NewsItem[] }
+  >();
 
   constructor(private readonly redis: RedisWriterService) {
     if (!fs.existsSync(this.outputDir)) {
@@ -56,11 +64,18 @@ export class StockStoreService {
     }
   }
 
-  savePriceData(symbol: string, price: number, changePercent: number, news: NewsItem[]): void {
+  savePriceData(
+    symbol: string,
+    price: number,
+    changePercent: number,
+    news: NewsItem[],
+  ): void {
     this.priceDataCache.set(symbol, { price, changePercent, news });
   }
 
-  getPriceData(symbol: string): { price: number; changePercent: number; news: NewsItem[] } | null {
+  getPriceData(
+    symbol: string,
+  ): { price: number; changePercent: number; news: NewsItem[] } | null {
     return this.priceDataCache.get(symbol) ?? null;
   }
 
@@ -83,9 +98,10 @@ export class StockStoreService {
 
       const price = priceData?.price ?? details?.price ?? null;
       const changePercent = priceData?.changePercent ?? null;
-      const trending = price !== null && prevPrice !== null
-        ? Math.abs((price - prevPrice) / prevPrice) > 0.03
-        : false;
+      const trending =
+        price !== null && prevPrice !== null
+          ? Math.abs((price - prevPrice) / prevPrice) > 0.03
+          : false;
 
       records.push({
         symbol: stock.symbol,
@@ -104,7 +120,8 @@ export class StockStoreService {
 
     // Sort by marketCap descending (parse numeric portion)
     records.sort((a, b) => {
-      const parseNum = (s: string | null) => parseFloat((s ?? '0').replace(/[^0-9.]/g, '')) || 0;
+      const parseNum = (s: string | null) =>
+        parseFloat((s ?? '0').replace(/[^0-9.]/g, '')) || 0;
       return parseNum(b.marketCap) - parseNum(a.marketCap);
     });
 
@@ -115,7 +132,8 @@ export class StockStoreService {
     const jsonPath = path.join(this.outputDir, 'stocks.json');
     fs.writeFileSync(jsonPath, JSON.stringify(records, null, 2));
 
-    const headers = 'symbol,name,sector,price,marketCap,pe,valuation,changePercent,trending,newsCount';
+    const headers =
+      'symbol,name,sector,price,marketCap,pe,valuation,changePercent,trending,newsCount';
     const csvRows = records.map((r) =>
       [
         r.symbol,
@@ -130,8 +148,13 @@ export class StockStoreService {
         r.news.length,
       ].join(','),
     );
-    fs.writeFileSync(path.join(this.outputDir, 'stocks.csv'), [headers, ...csvRows].join('\n'));
+    fs.writeFileSync(
+      path.join(this.outputDir, 'stocks.csv'),
+      [headers, ...csvRows].join('\n'),
+    );
 
-    this.logger.log(`Output written: ${records.length} records → output/stocks.json + output/stocks.csv`);
+    this.logger.log(
+      `Output written: ${records.length} records → output/stocks.json + output/stocks.csv`,
+    );
   }
 }

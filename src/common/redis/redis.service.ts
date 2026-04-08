@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -18,8 +23,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       retryStrategy: (times) => Math.min(times * 500, 10000),
       ...(url.startsWith('rediss://') && { tls: {} }),
     });
-    this.client.on('error', (err) => this.logger.warn(`Redis error: ${err.message}`));
-    this.client.connect().catch((err) => this.logger.warn(`Redis connect failed: ${err.message}`));
+    this.client.on('error', (err) =>
+      this.logger.warn(`Redis error: ${err.message}`),
+    );
+    this.client
+      .connect()
+      .catch((err) => this.logger.warn(`Redis connect failed: ${err.message}`));
   }
 
   async hgetall(key: string): Promise<Record<string, string>> {
@@ -28,6 +37,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
+  }
+
+  async hget(key: string, field: string): Promise<string | null> {
+    return this.client.hget(key, field);
   }
 
   /** Cache a value with a TTL in seconds */

@@ -28,7 +28,9 @@ export class PriceHistoryService {
       where: { timestamp: { gte: todayStart, lte: todayEnd } },
     });
     if (existingToday > 0) {
-      this.logger.log(`Archiver: ${existingToday} snapshots already exist for today — skipping`);
+      this.logger.log(
+        `Archiver: ${existingToday} snapshots already exist for today — skipping`,
+      );
       return 0;
     }
 
@@ -40,11 +42,20 @@ export class PriceHistoryService {
 
     const now = new Date();
     const maxAgeMs = 6 * 60 * 60 * 1_000; // 6 hours — prices must be from today's session
-    const records: { symbol: string; price: number; changePercent: number | null; timestamp: Date }[] = [];
+    const records: {
+      symbol: string;
+      price: number;
+      changePercent: number | null;
+      timestamp: Date;
+    }[] = [];
 
     for (const [symbol, json] of Object.entries(raw)) {
       try {
-        const parsed = JSON.parse(json) as { price?: number; changePercent?: number; timestamp?: string };
+        const parsed = JSON.parse(json) as {
+          price?: number;
+          changePercent?: number;
+          timestamp?: string;
+        };
         if (parsed.price == null) continue;
 
         // Skip stale prices (e.g. from yesterday if scraper failed today)
@@ -69,18 +80,24 @@ export class PriceHistoryService {
       return 0;
     }
 
-    const existingSymbols = await this.prisma.stock.findMany({ select: { symbol: true } });
+    const existingSymbols = await this.prisma.stock.findMany({
+      select: { symbol: true },
+    });
     const validSymbols = new Set(existingSymbols.map((s) => s.symbol));
     const validRecords = records.filter((r) => validSymbols.has(r.symbol));
 
     if (validRecords.length === 0) {
-      this.logger.warn('Archiver: no valid symbols to archive (stocks table may be empty)');
+      this.logger.warn(
+        'Archiver: no valid symbols to archive (stocks table may be empty)',
+      );
       return 0;
     }
 
     await this.prisma.stockPriceHistory.createMany({ data: validRecords });
 
-    this.logger.log(`Archived ${validRecords.length} price snapshots (${records.length - validRecords.length} skipped — not in stocks table)`);
+    this.logger.log(
+      `Archived ${validRecords.length} price snapshots (${records.length - validRecords.length} skipped — not in stocks table)`,
+    );
     return validRecords.length;
   }
 
@@ -90,5 +107,4 @@ export class PriceHistoryService {
       orderBy: { timestamp: 'desc' },
     });
   }
-
 }

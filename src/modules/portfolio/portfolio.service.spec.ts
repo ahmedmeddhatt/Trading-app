@@ -12,7 +12,12 @@ import Decimal from 'decimal.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-function makePosition(symbol: string, qty: string, avgPx: string, invested: string) {
+function makePosition(
+  symbol: string,
+  qty: string,
+  avgPx: string,
+  invested: string,
+) {
   return {
     symbol,
     totalQuantity: new Decimal(qty),
@@ -22,7 +27,12 @@ function makePosition(symbol: string, qty: string, avgPx: string, invested: stri
 }
 
 function freshJson(price: number, changePercent = 0) {
-  return JSON.stringify({ price, changePercent, trending: false, timestamp: new Date().toISOString() });
+  return JSON.stringify({
+    price,
+    changePercent,
+    trending: false,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 // ── mocks ──────────────────────────────────────────────────────────────────────
@@ -155,9 +165,24 @@ describe('PortfolioService', () => {
     it('computes winRate as realized profit / total ever invested', async () => {
       mockPositionsService.findByUser.mockResolvedValue([]);
       mockPrisma.realizedGain.findMany.mockResolvedValue([
-        { symbol: 'COMI', quantity: new Decimal('10'), avgPrice: new Decimal('50'), profit: new Decimal('100') },
-        { symbol: 'HRHO', quantity: new Decimal('5'), avgPrice: new Decimal('100'), profit: new Decimal('-50') },
-        { symbol: 'EFIH', quantity: new Decimal('20'), avgPrice: new Decimal('25'), profit: new Decimal('200') },
+        {
+          symbol: 'COMI',
+          quantity: new Decimal('10'),
+          avgPrice: new Decimal('50'),
+          profit: new Decimal('100'),
+        },
+        {
+          symbol: 'HRHO',
+          quantity: new Decimal('5'),
+          avgPrice: new Decimal('100'),
+          profit: new Decimal('-50'),
+        },
+        {
+          symbol: 'EFIH',
+          quantity: new Decimal('20'),
+          avgPrice: new Decimal('25'),
+          profit: new Decimal('200'),
+        },
       ]);
       mockRedis.hgetall.mockResolvedValue({});
 
@@ -185,7 +210,11 @@ describe('PortfolioService', () => {
   describe('getTimeline', () => {
     it('returns empty timeline when user has no positions', async () => {
       mockPositionsService.findByUser.mockResolvedValue([]);
-      const result = await service.getTimeline('user1', new Date('2026-01-01'), new Date('2026-03-01'));
+      const result = await service.getTimeline(
+        'user1',
+        new Date('2026-01-01'),
+        new Date('2026-03-01'),
+      );
       expect(result.timeline).toHaveLength(0);
     });
 
@@ -200,7 +229,11 @@ describe('PortfolioService', () => {
         { symbol: 'HRHO', price: new Decimal('90'), timestamp: new Date(ts) },
       ]);
 
-      const result = await service.getTimeline('user1', new Date('2026-01-01'), new Date('2026-03-01'));
+      const result = await service.getTimeline(
+        'user1',
+        new Date('2026-01-01'),
+        new Date('2026-03-01'),
+      );
       // totalValue = 10*60 + 5*90 = 600 + 450 = 1050
       expect(result.timeline).toHaveLength(1);
       expect(parseFloat(result.timeline[0].totalValue)).toBeCloseTo(1050, 2);
@@ -211,11 +244,23 @@ describe('PortfolioService', () => {
         makePosition('COMI', '10', '50', '500'),
       ]);
       mockPrisma.stockPriceHistory.findMany.mockResolvedValue([
-        { symbol: 'COMI', price: new Decimal('60'), timestamp: new Date('2026-02-01T10:00:00.000Z') },
-        { symbol: 'COMI', price: new Decimal('65'), timestamp: new Date('2026-02-02T10:00:00.000Z') },
+        {
+          symbol: 'COMI',
+          price: new Decimal('60'),
+          timestamp: new Date('2026-02-01T10:00:00.000Z'),
+        },
+        {
+          symbol: 'COMI',
+          price: new Decimal('65'),
+          timestamp: new Date('2026-02-02T10:00:00.000Z'),
+        },
       ]);
 
-      const result = await service.getTimeline('user1', new Date('2026-01-01'), new Date('2026-03-01'));
+      const result = await service.getTimeline(
+        'user1',
+        new Date('2026-01-01'),
+        new Date('2026-03-01'),
+      );
       expect(result.timeline).toHaveLength(2);
     });
   });
@@ -244,7 +289,10 @@ describe('PortfolioService', () => {
       });
 
       const result = await service.getAllocation('user1');
-      const total = result.bySymbol.reduce((sum, s) => sum + parseFloat(s.percent), 0);
+      const total = result.bySymbol.reduce(
+        (sum, s) => sum + parseFloat(s.percent),
+        0,
+      );
       expect(total).toBeCloseTo(100, 1);
     });
 
@@ -262,6 +310,5 @@ describe('PortfolioService', () => {
       expect(result.bySymbol[0].currentPrice).toBeNull();
       expect(parseFloat(result.bySymbol[0].value)).toBeCloseTo(500, 2);
     });
-
   });
 });

@@ -7,7 +7,12 @@ import { TechnicalAnalysisService } from '../technical-analysis.service';
 import { NewsScraperService } from './news-scraper.service';
 import { STRATEGY_PROMPTS } from './strategy-prompts';
 
-export type StockStatus = 'Hot' | 'Warming Up' | 'Neutral' | 'Cooling Down' | 'Cold';
+export type StockStatus =
+  | 'Hot'
+  | 'Warming Up'
+  | 'Neutral'
+  | 'Cooling Down'
+  | 'Cold';
 
 export interface StrategyAnalysisResult {
   symbol: string;
@@ -79,7 +84,9 @@ export class GeminiAnalysisService {
       this.aiProviders.push({
         name: 'Gemini',
         call: async (prompt: string) => {
-          const model = this.genAI!.getGenerativeModel({ model: 'gemini-2.0-flash' });
+          const model = this.genAI!.getGenerativeModel({
+            model: 'gemini-2.0-flash',
+          });
           const result = await model.generateContent(prompt);
           return result.response.text().trim();
         },
@@ -93,17 +100,24 @@ export class GeminiAnalysisService {
       this.aiProviders.push({
         name: 'Groq',
         call: async (prompt: string) => {
-          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
-            body: JSON.stringify({
-              model: 'llama-3.3-70b-versatile',
-              messages: [{ role: 'user', content: prompt }],
-              temperature: 0.3,
-              max_tokens: 2048,
-            }),
-          });
-          if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+          const res = await fetch(
+            'https://api.groq.com/openai/v1/chat/completions',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${groqKey}`,
+              },
+              body: JSON.stringify({
+                model: 'llama-3.3-70b-versatile',
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.3,
+                max_tokens: 2048,
+              }),
+            },
+          );
+          if (!res.ok)
+            throw new Error(`Groq ${res.status}: ${await res.text()}`);
           const json = await res.json();
           return json.choices[0].message.content.trim();
         },
@@ -117,21 +131,25 @@ export class GeminiAnalysisService {
       this.aiProviders.push({
         name: 'OpenRouter',
         call: async (prompt: string) => {
-          const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openRouterKey}`,
-              'HTTP-Referer': 'https://tradedesk.app',
+          const res = await fetch(
+            'https://openrouter.ai/api/v1/chat/completions',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${openRouterKey}`,
+                'HTTP-Referer': 'https://tradedesk.app',
+              },
+              body: JSON.stringify({
+                model: 'nvidia/nemotron-3-super-120b-a12b:free',
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.3,
+                max_tokens: 2048,
+              }),
             },
-            body: JSON.stringify({
-              model: 'nvidia/nemotron-3-super-120b-a12b:free',
-              messages: [{ role: 'user', content: prompt }],
-              temperature: 0.3,
-              max_tokens: 2048,
-            }),
-          });
-          if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+          );
+          if (!res.ok)
+            throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
           const json = await res.json();
           return json.choices[0].message.content.trim();
         },
@@ -140,14 +158,20 @@ export class GeminiAnalysisService {
     }
 
     if (this.aiProviders.length === 0) {
-      this.logger.warn('No AI API keys set — signals will use technical analysis fallback');
+      this.logger.warn(
+        'No AI API keys set — signals will use technical analysis fallback',
+      );
     } else {
-      this.logger.log(`AI provider chain: ${this.aiProviders.map(p => p.name).join(' → ')}`);
+      this.logger.log(
+        `AI provider chain: ${this.aiProviders.map((p) => p.name).join(' → ')}`,
+      );
     }
   }
 
   /** Try each AI provider in order until one succeeds */
-  private async callAIChain(prompt: string): Promise<{ text: string; provider: string }> {
+  private async callAIChain(
+    prompt: string,
+  ): Promise<{ text: string; provider: string }> {
     for (const provider of this.aiProviders) {
       try {
         const text = await provider.call(prompt);
@@ -161,7 +185,10 @@ export class GeminiAnalysisService {
     throw new Error('All AI providers failed');
   }
 
-  async analyzeStock(symbol: string, horizon: Horizon = 'MID_TERM'): Promise<AISignalResult> {
+  async analyzeStock(
+    symbol: string,
+    horizon: Horizon = 'MID_TERM',
+  ): Promise<AISignalResult> {
     const upperSymbol = symbol.toUpperCase();
 
     // Check cache first (2h TTL)
@@ -172,7 +199,14 @@ export class GeminiAnalysisService {
     }
 
     // Gather all data in parallel
-    const [technicalData, stock, sectorStocks, news, marketNews, externalSignals] = await Promise.all([
+    const [
+      technicalData,
+      stock,
+      sectorStocks,
+      news,
+      marketNews,
+      externalSignals,
+    ] = await Promise.all([
       this.technicalAnalysis.analyze(upperSymbol).catch(() => null),
       this.prisma.stock.findUnique({ where: { symbol: upperSymbol } }),
       this.getSectorComparison(upperSymbol),
@@ -190,27 +224,44 @@ export class GeminiAnalysisService {
         let livePrice: number | null = null;
         if (!hasTechnical) {
           const priceMap = await this.redis.hgetall('market:prices');
-          const priceData = priceMap[upperSymbol] ? JSON.parse(priceMap[upperSymbol]) : null;
+          const priceData = priceMap[upperSymbol]
+            ? JSON.parse(priceMap[upperSymbol])
+            : null;
           livePrice = priceData?.price ?? null;
         }
 
         const result = await this.callGemini(
-          upperSymbol, hasTechnical ? technicalData : null, stock, sectorStocks,
-          news, marketNews, horizon, externalSignals, livePrice,
+          upperSymbol,
+          hasTechnical ? technicalData : null,
+          stock,
+          sectorStocks,
+          news,
+          marketNews,
+          horizon,
+          externalSignals,
+          livePrice,
         );
 
         // Cache for 2 hours
         await this.redis.setex(cacheKey, 7200, JSON.stringify(result));
         return result;
       } catch (err) {
-        this.logger.error(`Gemini analysis failed for ${upperSymbol}: ${(err as Error).message}`);
+        this.logger.error(
+          `Gemini analysis failed for ${upperSymbol}: ${(err as Error).message}`,
+        );
         // Fall through to technical fallback or basic fallback
       }
     }
 
     // Fallback: use technical analysis if available
     if (hasTechnical) {
-      return this.buildEnhancedTechnicalResult(technicalData, stock, sectorStocks, horizon, externalSignals);
+      return this.buildEnhancedTechnicalResult(
+        technicalData,
+        stock,
+        sectorStocks,
+        horizon,
+        externalSignals,
+      );
     }
 
     return this.buildFallbackResult(upperSymbol, horizon, externalSignals);
@@ -218,7 +269,14 @@ export class GeminiAnalysisService {
 
   private async gatherStockData(symbol: string) {
     const upperSymbol = symbol.toUpperCase();
-    const [technicalData, stock, sectorStocks, news, marketNews, externalSignals] = await Promise.all([
+    const [
+      technicalData,
+      stock,
+      sectorStocks,
+      news,
+      marketNews,
+      externalSignals,
+    ] = await Promise.all([
       this.technicalAnalysis.analyze(upperSymbol).catch(() => null),
       this.prisma.stock.findUnique({ where: { symbol: upperSymbol } }),
       this.getSectorComparison(upperSymbol),
@@ -231,11 +289,23 @@ export class GeminiAnalysisService {
     const hasTechnical = technicalData && !technicalData.error;
     if (!hasTechnical) {
       const priceMap = await this.redis.hgetall('market:prices');
-      const priceData = priceMap[upperSymbol] ? JSON.parse(priceMap[upperSymbol]) : null;
+      const priceData = priceMap[upperSymbol]
+        ? JSON.parse(priceMap[upperSymbol])
+        : null;
       livePrice = priceData?.price ?? null;
     }
 
-    return { technicalData, stock, sectorStocks, news, marketNews, externalSignals, hasTechnical, livePrice, upperSymbol };
+    return {
+      technicalData,
+      stock,
+      sectorStocks,
+      news,
+      marketNews,
+      externalSignals,
+      hasTechnical,
+      livePrice,
+      upperSymbol,
+    };
   }
 
   async analyzeStrategy(
@@ -261,25 +331,41 @@ export class GeminiAnalysisService {
 
       try {
         const data = await this.gatherStockData(upperSymbol);
-        const currentPrice = data.hasTechnical ? data.technicalData!.currentPrice : (data.livePrice ?? 0);
+        const currentPrice = data.hasTechnical
+          ? data.technicalData!.currentPrice
+          : (data.livePrice ?? 0);
 
         if (this.aiProviders.length > 0) {
           try {
-            const result = await this.callStrategyAI(strategyId, strategy, data, horizon, currentPrice as number);
+            const result = await this.callStrategyAI(
+              strategyId,
+              strategy,
+              data,
+              horizon,
+              currentPrice as number,
+            );
             await this.redis.setex(cacheKey, 7200, JSON.stringify(result));
             results.push(result);
             continue;
           } catch (err) {
-            this.logger.error(`All AI providers failed for ${upperSymbol}: ${(err as Error).message}`);
+            this.logger.error(
+              `All AI providers failed for ${upperSymbol}: ${(err as Error).message}`,
+            );
           }
         }
 
         // Fallback: use technical analysis data directly (short cache so retries work after quota resets)
-        const fallback = this.buildStrategyFallback(strategyId, data, currentPrice as number);
+        const fallback = this.buildStrategyFallback(
+          strategyId,
+          data,
+          currentPrice as number,
+        );
         await this.redis.setex(cacheKey, 300, JSON.stringify(fallback)); // 5 min cache for fallbacks
         results.push(fallback);
       } catch (err) {
-        this.logger.error(`Strategy analysis failed for ${upperSymbol}: ${(err as Error).message}`);
+        this.logger.error(
+          `Strategy analysis failed for ${upperSymbol}: ${(err as Error).message}`,
+        );
         results.push({
           symbol: upperSymbol,
           strategyId,
@@ -293,7 +379,8 @@ export class GeminiAnalysisService {
             months3: { low: 0, mid: 0, high: 0 },
             months6: { low: 0, mid: 0, high: 0 },
           },
-          analysis: 'Unable to analyze this stock. Insufficient data available.',
+          analysis:
+            'Unable to analyze this stock. Insufficient data available.',
           reasons: ['Analysis failed due to insufficient data'],
           risks: ['No data available for risk assessment'],
           source: 'technical-fallback',
@@ -311,7 +398,16 @@ export class GeminiAnalysisService {
     horizon: Horizon,
     currentPrice: number,
   ): Promise<StrategyAnalysisResult> {
-    const { technicalData, stock, sectorStocks, news, marketNews, externalSignals, hasTechnical, upperSymbol } = data;
+    const {
+      technicalData,
+      stock,
+      sectorStocks,
+      news,
+      marketNews,
+      externalSignals,
+      hasTechnical,
+      upperSymbol,
+    } = data;
 
     let technicalSection = '';
     if (hasTechnical && technicalData) {
@@ -338,14 +434,19 @@ SUPPORT & RESISTANCE:
 TECHNICAL SIGNAL: ${sig.action} (score: ${sig.score})`;
     }
 
-    const priceHistory = hasTechnical && technicalData
-      ? technicalData.priceHistory?.slice(-30).map((p: any) => `${p.timestamp.split('T')[0]}: ${p.price}`).join('\n') ?? 'N/A'
-      : 'N/A';
+    const priceHistory =
+      hasTechnical && technicalData
+        ? (technicalData.priceHistory
+            ?.slice(-30)
+            .map((p: any) => `${p.timestamp.split('T')[0]}: ${p.price}`)
+            .join('\n') ?? 'N/A')
+        : 'N/A';
 
-    const newsText = [...(news ?? []), ...(marketNews ?? [])]
-      .slice(0, 8)
-      .map((n: any) => `- ${n.title} (${n.source})`)
-      .join('\n') || 'No recent news';
+    const newsText =
+      [...(news ?? []), ...(marketNews ?? [])]
+        .slice(0, 8)
+        .map((n: any) => `- ${n.title} (${n.source})`)
+        .join('\n') || 'No recent news';
 
     const prompt = `${strategy.systemPrompt}
 
@@ -391,23 +492,45 @@ IMPORTANT:
 - stopLoss should be below the lowest support
 - projection ranges should be realistic based on the stock's historical volatility and your analysis`;
 
-    const { text: rawText, provider: aiProvider } = await this.callAIChain(prompt);
-    this.logger.log(`Strategy analysis for ${upperSymbol} powered by ${aiProvider}`);
-    const jsonStr = rawText.replace(/^```json?\s*/, '').replace(/\s*```$/, '').trim();
+    const { text: rawText, provider: aiProvider } =
+      await this.callAIChain(prompt);
+    this.logger.log(
+      `Strategy analysis for ${upperSymbol} powered by ${aiProvider}`,
+    );
+    const jsonStr = rawText
+      .replace(/^```json?\s*/, '')
+      .replace(/\s*```$/, '')
+      .trim();
     const parsed = JSON.parse(jsonStr);
 
-    const validSignals: StockStatus[] = ['Hot', 'Warming Up', 'Neutral', 'Cooling Down', 'Cold'];
+    const validSignals: StockStatus[] = [
+      'Hot',
+      'Warming Up',
+      'Neutral',
+      'Cooling Down',
+      'Cold',
+    ];
     const validConfidence = ['High', 'Medium', 'Low'];
 
     return {
       symbol: upperSymbol,
       strategyId,
       signal: validSignals.includes(parsed.signal) ? parsed.signal : 'Neutral',
-      confidence: validConfidence.includes(parsed.confidence) ? parsed.confidence : 'Medium',
+      confidence: validConfidence.includes(parsed.confidence)
+        ? parsed.confidence
+        : 'Medium',
       currentPrice,
       stopLoss: Number(parsed.stopLoss) || currentPrice * 0.9,
-      supports: this.normalizeThreeLevels(parsed.supports, currentPrice, 'support'),
-      resistances: this.normalizeThreeLevels(parsed.resistances, currentPrice, 'resistance'),
+      supports: this.normalizeThreeLevels(
+        parsed.supports,
+        currentPrice,
+        'support',
+      ),
+      resistances: this.normalizeThreeLevels(
+        parsed.resistances,
+        currentPrice,
+        'resistance',
+      ),
       projection: {
         months3: {
           low: Number(parsed.projection?.months3?.low) || currentPrice * 0.9,
@@ -421,8 +544,12 @@ IMPORTANT:
         },
       },
       analysis: String(parsed.analysis || ''),
-      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.slice(0, 7).map(String) : [],
-      risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 5).map(String) : [],
+      reasons: Array.isArray(parsed.reasons)
+        ? parsed.reasons.slice(0, 7).map(String)
+        : [],
+      risks: Array.isArray(parsed.risks)
+        ? parsed.risks.slice(0, 5).map(String)
+        : [],
       source: 'ai',
       aiProvider,
     };
@@ -434,21 +561,29 @@ IMPORTANT:
     type: 'support' | 'resistance',
   ): [number, number, number] {
     if (Array.isArray(arr) && arr.length >= 3) {
-      const nums = arr.slice(0, 3).map(Number).filter(n => n > 0);
-      if (nums.length === 3) return nums.sort((a, b) => type === 'support' ? b - a : a - b) as [number, number, number];
+      const nums = arr
+        .slice(0, 3)
+        .map(Number)
+        .filter((n) => n > 0);
+      if (nums.length === 3)
+        return nums.sort((a, b) => (type === 'support' ? b - a : a - b)) as [
+          number,
+          number,
+          number,
+        ];
     }
     // Fallback: generate levels from current price
     if (type === 'support') {
       return [
         +(currentPrice * 0.97).toFixed(2),
         +(currentPrice * 0.94).toFixed(2),
-        +(currentPrice * 0.90).toFixed(2),
+        +(currentPrice * 0.9).toFixed(2),
       ];
     }
     return [
       +(currentPrice * 1.03).toFixed(2),
       +(currentPrice * 1.06).toFixed(2),
-      +(currentPrice * 1.10).toFixed(2),
+      +(currentPrice * 1.1).toFixed(2),
     ];
   }
 
@@ -467,8 +602,14 @@ IMPORTANT:
     if (hasTechnical && technicalData) {
       const s = technicalData.supportResistance!.supports;
       const r = technicalData.supportResistance!.resistances;
-      supports = s.length >= 3 ? [s[0], s[1], s[2]] : this.normalizeThreeLevels(s, currentPrice, 'support');
-      resistances = r.length >= 3 ? [r[0], r[1], r[2]] : this.normalizeThreeLevels(r, currentPrice, 'resistance');
+      supports =
+        s.length >= 3
+          ? [s[0], s[1], s[2]]
+          : this.normalizeThreeLevels(s, currentPrice, 'support');
+      resistances =
+        r.length >= 3
+          ? [r[0], r[1], r[2]]
+          : this.normalizeThreeLevels(r, currentPrice, 'resistance');
       signal = technicalData.overallSignal!.action;
       confidence = technicalData.overallSignal!.confidence;
     } else {
@@ -500,10 +641,16 @@ IMPORTANT:
         },
       },
       analysis: `Technical analysis fallback for ${upperSymbol}. The AI analysis service is currently unavailable. Based on technical indicators, the status is ${signal} with ${confidence} confidence. Key support and resistance levels are provided for reference.`,
-      reasons: hasTechnical && technicalData
-        ? [`Technical signal: ${signal} (score: ${technicalData.overallSignal!.score})`, `Trend: ${technicalData.trendAnalysis!.shortTerm} short-term`]
-        : ['Insufficient data for detailed analysis'],
-      risks: ['AI analysis unavailable — results are based on technical indicators only'],
+      reasons:
+        hasTechnical && technicalData
+          ? [
+              `Technical signal: ${signal} (score: ${technicalData.overallSignal!.score})`,
+              `Trend: ${technicalData.trendAnalysis!.shortTerm} short-term`,
+            ]
+          : ['Insufficient data for detailed analysis'],
+      risks: [
+        'AI analysis unavailable — results are based on technical indicators only',
+      ],
       source: 'technical-fallback',
     };
   }
@@ -521,15 +668,17 @@ IMPORTANT:
   ): Promise<AISignalResult> {
     const currentPrice = technical?.currentPrice ?? livePrice ?? 'N/A';
 
-    const priceHistory = technical?.priceHistory
-      ?.slice(-30)
-      .map((p: any) => `${p.timestamp.split('T')[0]}: ${p.price}`)
-      .join('\n') ?? 'No price history available yet';
+    const priceHistory =
+      technical?.priceHistory
+        ?.slice(-30)
+        .map((p: any) => `${p.timestamp.split('T')[0]}: ${p.price}`)
+        .join('\n') ?? 'No price history available yet';
 
-    const newsText = [...news, ...marketNews]
-      .slice(0, 10)
-      .map((n: any) => `- ${n.title} (${n.source})`)
-      .join('\n') || 'No recent news available';
+    const newsText =
+      [...news, ...marketNews]
+        .slice(0, 10)
+        .map((n: any) => `- ${n.title} (${n.source})`)
+        .join('\n') || 'No recent news available';
 
     // Build technical section dynamically
     let technicalSection: string;
@@ -601,20 +750,35 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
     this.logger.log(`Signal analysis for ${symbol} powered by ${provider}`);
 
     // Parse JSON — handle potential markdown wrapping
-    const jsonStr = rawText.replace(/^```json?\s*/, '').replace(/\s*```$/, '').trim();
+    const jsonStr = rawText
+      .replace(/^```json?\s*/, '')
+      .replace(/\s*```$/, '')
+      .trim();
     const parsed = JSON.parse(jsonStr);
 
     // Validate and normalize
-    const validSignals: StockStatus[] = ['Hot', 'Warming Up', 'Neutral', 'Cooling Down', 'Cold'];
+    const validSignals: StockStatus[] = [
+      'Hot',
+      'Warming Up',
+      'Neutral',
+      'Cooling Down',
+      'Cold',
+    ];
     const validConfidence = ['High', 'Medium', 'Low'];
 
     return {
       signal: validSignals.includes(parsed.signal) ? parsed.signal : 'Neutral',
-      confidence: validConfidence.includes(parsed.confidence) ? parsed.confidence : 'Medium',
+      confidence: validConfidence.includes(parsed.confidence)
+        ? parsed.confidence
+        : 'Medium',
       score: Math.max(-100, Math.min(100, Number(parsed.score) || 0)),
-      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.slice(0, 7).map(String) : [],
+      reasons: Array.isArray(parsed.reasons)
+        ? parsed.reasons.slice(0, 7).map(String)
+        : [],
       summary: String(parsed.summary || ''),
-      risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 4).map(String) : [],
+      risks: Array.isArray(parsed.risks)
+        ? parsed.risks.slice(0, 4).map(String)
+        : [],
       outlook: String(parsed.outlook || ''),
       horizon,
       source: 'ai',
@@ -622,8 +786,13 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
     };
   }
 
-  private async getSectorComparison(symbol: string): Promise<{ avgPE: number | null; stockCount: number }> {
-    const stock = await this.prisma.stock.findUnique({ where: { symbol }, select: { sector: true } });
+  private async getSectorComparison(
+    symbol: string,
+  ): Promise<{ avgPE: number | null; stockCount: number }> {
+    const stock = await this.prisma.stock.findUnique({
+      where: { symbol },
+      select: { sector: true },
+    });
     if (!stock?.sector) return { avgPE: null, stockCount: 0 };
 
     const result = await this.prisma.stock.aggregate({
@@ -667,24 +836,36 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
     const reasons: string[] = [];
 
     if (ind.rsi14.value != null) {
-      reasons.push(`RSI at ${ind.rsi14.value} — ${ind.rsi14.zone === 'oversold' ? 'oversold, potential bounce' : ind.rsi14.zone === 'overbought' ? 'overbought, potential pullback' : 'neutral zone'}`);
+      reasons.push(
+        `RSI at ${ind.rsi14.value} — ${ind.rsi14.zone === 'oversold' ? 'oversold, potential bounce' : ind.rsi14.zone === 'overbought' ? 'overbought, potential pullback' : 'neutral zone'}`,
+      );
     }
     if (ind.macd.value != null) {
-      reasons.push(`MACD ${ind.macd.trend} — MACD: ${ind.macd.value}, Signal: ${ind.macd.signal}`);
+      reasons.push(
+        `MACD ${ind.macd.trend} — MACD: ${ind.macd.value}, Signal: ${ind.macd.signal}`,
+      );
     }
     if (ind.sma200 != null) {
       const pctVs200 = trend.priceVsSma200;
-      reasons.push(`Price ${pctVs200 > 0 ? 'above' : 'below'} SMA200 by ${Math.abs(pctVs200)}% — ${pctVs200 > 0 ? 'long-term bullish' : 'long-term bearish'}`);
+      reasons.push(
+        `Price ${pctVs200 > 0 ? 'above' : 'below'} SMA200 by ${Math.abs(pctVs200)}% — ${pctVs200 > 0 ? 'long-term bullish' : 'long-term bearish'}`,
+      );
     }
-    if (trend.goldenCross) reasons.push('Golden Cross detected — strong bullish signal');
-    if (trend.deathCross) reasons.push('Death Cross detected — strong bearish signal');
+    if (trend.goldenCross)
+      reasons.push('Golden Cross detected — strong bullish signal');
+    if (trend.deathCross)
+      reasons.push('Death Cross detected — strong bearish signal');
     if (stock?.pe && sectorData.avgPE) {
       const pe = parseFloat(stock.pe.toString());
-      const ratio = (pe / sectorData.avgPE * 100).toFixed(0);
-      reasons.push(`P/E ${pe.toFixed(1)} vs sector avg ${sectorData.avgPE.toFixed(1)} (${Number(ratio) < 100 ? 'undervalued' : 'overvalued'} at ${ratio}%)`);
+      const ratio = ((pe / sectorData.avgPE) * 100).toFixed(0);
+      reasons.push(
+        `P/E ${pe.toFixed(1)} vs sector avg ${sectorData.avgPE.toFixed(1)} (${Number(ratio) < 100 ? 'undervalued' : 'overvalued'} at ${ratio}%)`,
+      );
     }
     if (ind.bollingerBands.percentB != null) {
-      reasons.push(`Bollinger %B at ${ind.bollingerBands.percentB}% — ${ind.bollingerBands.percentB < 20 ? 'near lower band' : ind.bollingerBands.percentB > 80 ? 'near upper band' : 'mid-range'}`);
+      reasons.push(
+        `Bollinger %B at ${ind.bollingerBands.percentB}% — ${ind.bollingerBands.percentB < 20 ? 'near lower band' : ind.bollingerBands.percentB > 80 ? 'near upper band' : 'mid-range'}`,
+      );
     }
 
     return {
@@ -701,7 +882,11 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
     };
   }
 
-  private buildFallbackResult(symbol: string, horizon: Horizon, externalSignals: any): AISignalResult {
+  private buildFallbackResult(
+    symbol: string,
+    horizon: Horizon,
+    externalSignals: any,
+  ): AISignalResult {
     return {
       signal: 'Neutral',
       confidence: 'Low',
@@ -718,10 +903,16 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
 
   private buildRisks(technical: any): string[] {
     const risks: string[] = [];
-    if (technical.indicators.rsi14.zone === 'overbought') risks.push('RSI overbought — reversal risk');
-    if (technical.indicators.rsi14.zone === 'oversold') risks.push('Continued selling pressure possible');
-    if (technical.trendAnalysis.deathCross) risks.push('Death Cross indicates potential sustained downtrend');
-    if (technical.indicators.bollingerBands.bandwidth != null && technical.indicators.bollingerBands.bandwidth < 5) {
+    if (technical.indicators.rsi14.zone === 'overbought')
+      risks.push('RSI overbought — reversal risk');
+    if (technical.indicators.rsi14.zone === 'oversold')
+      risks.push('Continued selling pressure possible');
+    if (technical.trendAnalysis.deathCross)
+      risks.push('Death Cross indicates potential sustained downtrend');
+    if (
+      technical.indicators.bollingerBands.bandwidth != null &&
+      technical.indicators.bollingerBands.bandwidth < 5
+    ) {
       risks.push('Low volatility — breakout in either direction possible');
     }
     if (!risks.length) risks.push('Standard market risk applies');
@@ -730,17 +921,20 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
 
   private buildOutlook(signal: string, horizon: Horizon): string {
     const outlooks: Record<string, Record<Horizon, string>> = {
-      'Hot': {
-        SPECULATION: 'Strong short-term momentum with multiple bullish indicators converging',
+      Hot: {
+        SPECULATION:
+          'Strong short-term momentum with multiple bullish indicators converging',
         MID_TERM: 'Solid uptrend supported by both technicals and fundamentals',
-        LONG_TERM: 'Long-term indicators point to sustained strength and growth potential',
+        LONG_TERM:
+          'Long-term indicators point to sustained strength and growth potential',
       },
       'Warming Up': {
-        SPECULATION: 'Early momentum building with improving short-term signals',
+        SPECULATION:
+          'Early momentum building with improving short-term signals',
         MID_TERM: 'Gradual improvement in trend and sentiment indicators',
         LONG_TERM: 'Fundamentals improving with positive long-term trajectory',
       },
-      'Neutral': {
+      Neutral: {
         SPECULATION: 'No clear short-term directional bias — mixed signals',
         MID_TERM: 'Sideways movement expected, awaiting catalyst for direction',
         LONG_TERM: 'Stable but lacking clear growth or decline catalysts',
@@ -750,12 +944,16 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         MID_TERM: 'Trend showing signs of deterioration across timeframes',
         LONG_TERM: 'Fundamental headwinds emerging, weakening outlook',
       },
-      'Cold': {
-        SPECULATION: 'Strong downward pressure with bearish indicator alignment',
-        MID_TERM: 'Sustained weakness across technical and fundamental measures',
+      Cold: {
+        SPECULATION:
+          'Strong downward pressure with bearish indicator alignment',
+        MID_TERM:
+          'Sustained weakness across technical and fundamental measures',
         LONG_TERM: 'Structural challenges with prolonged negative outlook',
       },
     };
-    return outlooks[signal]?.[horizon] ?? 'Insufficient data to determine outlook';
+    return (
+      outlooks[signal]?.[horizon] ?? 'Insufficient data to determine outlook'
+    );
   }
 }

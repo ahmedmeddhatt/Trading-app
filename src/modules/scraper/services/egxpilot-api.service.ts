@@ -27,7 +27,9 @@ export class EgxpilotApiService {
       const data = await this.fetchWithRetry(this.API_URL);
       return this.parseAPIResponse(data);
     } catch (directErr) {
-      this.logger.warn(`Direct API failed (${(directErr as Error).message}), trying allorigins proxy`);
+      this.logger.warn(
+        `Direct API failed (${(directErr as Error).message}), trying allorigins proxy`,
+      );
       const encoded = encodeURIComponent(this.API_URL);
       const wrapper = await this.fetchWithRetry(
         `https://api.allorigins.win/get?url=${encoded}`,
@@ -39,22 +41,30 @@ export class EgxpilotApiService {
     }
   }
 
-  private async fetchWithRetry(url: string, attempt = 1, timeoutMs = 15_000): Promise<any> {
+  private async fetchWithRetry(
+    url: string,
+    attempt = 1,
+    timeoutMs = 15_000,
+  ): Promise<any> {
     try {
       const res = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json',
-          'Referer': 'https://egxpilot.com/stocks.html',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          Accept: 'application/json',
+          Referer: 'https://egxpilot.com/stocks.html',
         },
         signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get('retry-after') ?? '60', 10);
-        this.logger.warn(`EGXpilot rate limited — waiting ${retryAfter}s before retry`);
+        this.logger.warn(
+          `EGXpilot rate limited — waiting ${retryAfter}s before retry`,
+        );
         await sleep(retryAfter * 1000);
-        if (attempt <= 3) return this.fetchWithRetry(url, attempt + 1, timeoutMs);
+        if (attempt <= 3)
+          return this.fetchWithRetry(url, attempt + 1, timeoutMs);
         throw new Error('RATE_LIMITED: max retries exceeded');
       }
 
@@ -63,7 +73,9 @@ export class EgxpilotApiService {
     } catch (err) {
       if (attempt <= 3 && (err as Error).name !== 'AbortError') {
         const delay = Math.min(2 ** attempt * 1000, 30_000);
-        this.logger.warn(`Fetch attempt ${attempt} failed — retrying in ${delay}ms`);
+        this.logger.warn(
+          `Fetch attempt ${attempt} failed — retrying in ${delay}ms`,
+        );
         await sleep(delay);
         return this.fetchWithRetry(url, attempt + 1, timeoutMs);
       }
@@ -72,7 +84,9 @@ export class EgxpilotApiService {
   }
 
   private parseAPIResponse(data: any): EgxpilotStock[] {
-    const arr: any[] = Array.isArray(data) ? data : (data.stocks ?? data.data ?? []);
+    const arr: any[] = Array.isArray(data)
+      ? data
+      : (data.stocks ?? data.data ?? []);
 
     if (arr.length > 0) {
       this.logger.log('First stock item: ' + JSON.stringify(arr[0], null, 2));
@@ -84,7 +98,9 @@ export class EgxpilotApiService {
         name: item.StockName ?? item.name ?? item.companyName,
         sector: item.Sector ?? item.sector ?? 'Unknown',
         price: parseFloat(item.LastPrice ?? item.price ?? item.last ?? 0),
-        changePercent: parseFloat(item.DailyChange ?? item.changePercent ?? item.pct ?? 0),
+        changePercent: parseFloat(
+          item.DailyChange ?? item.changePercent ?? item.pct ?? 0,
+        ),
         lastUpdate: new Date().toISOString(),
         recommendation: item.Recommendation ?? null,
         signals: {

@@ -75,13 +75,17 @@ describe('BullMQ Queue Health', () => {
 
     it('price-scraper repeat job uses removeOnFail: 50', () => {
       const allCalls = priceQueue.add.mock.calls;
-      const hasRemoveOnFail50 = allCalls.some((c: any[]) => c[2]?.removeOnFail === 50);
+      const hasRemoveOnFail50 = allCalls.some(
+        (c: any[]) => c[2]?.removeOnFail === 50,
+      );
       expect(hasRemoveOnFail50).toBe(true);
     });
 
     it('price-scraper repeat job uses removeOnComplete: 10', () => {
       const allCalls = priceQueue.add.mock.calls;
-      const hasRemoveOnComplete = allCalls.some((c: any[]) => c[2]?.removeOnComplete === 10);
+      const hasRemoveOnComplete = allCalls.some(
+        (c: any[]) => c[2]?.removeOnComplete === 10,
+      );
       expect(hasRemoveOnComplete).toBe(true);
     });
 
@@ -93,7 +97,9 @@ describe('BullMQ Queue Health', () => {
 
     it('price-scraper backoff type is exponential', () => {
       const allCalls = priceQueue.add.mock.calls;
-      const hasExpBackoff = allCalls.some((c: any[]) => c[2]?.backoff?.type === 'exponential');
+      const hasExpBackoff = allCalls.some(
+        (c: any[]) => c[2]?.backoff?.type === 'exponential',
+      );
       expect(hasExpBackoff).toBe(true);
     });
   });

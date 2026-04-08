@@ -39,7 +39,10 @@ export class AuthController {
   }
 
   @Post('register')
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: any) {
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: any,
+  ) {
     const user = await this.authService.register(dto);
     this.setAuthCookie(res, this.authService.issueToken(user));
     const { passwordHash, ...safe } = user;

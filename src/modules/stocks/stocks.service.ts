@@ -29,7 +29,11 @@ export class StocksService {
     const raw = await this.redis.hgetall('market:prices');
     const result: Record<string, LivePrice> = {};
     for (const [symbol, json] of Object.entries(raw ?? {})) {
-      try { result[symbol] = JSON.parse(json); } catch { /* skip */ }
+      try {
+        result[symbol] = JSON.parse(json);
+      } catch {
+        /* skip */
+      }
     }
     return result;
   }
@@ -40,7 +44,12 @@ export class StocksService {
    */
   private async getLatestDbPrices(): Promise<Record<string, LivePrice>> {
     const rows = await this.prisma.$queryRaw<
-      { symbol: string; price: number; change_percent: number | null; timestamp: Date }[]
+      {
+        symbol: string;
+        price: number;
+        change_percent: number | null;
+        timestamp: Date;
+      }[]
     >`
       SELECT DISTINCT ON (symbol)
         symbol,
@@ -55,7 +64,10 @@ export class StocksService {
       result[row.symbol] = {
         price: row.price,
         changePercent: row.change_percent ?? 0,
-        timestamp: row.timestamp instanceof Date ? row.timestamp.toISOString() : String(row.timestamp),
+        timestamp:
+          row.timestamp instanceof Date
+            ? row.timestamp.toISOString()
+            : String(row.timestamp),
       };
     }
     return result;
@@ -69,7 +81,9 @@ export class StocksService {
     const livePrices = await this.getAllLivePrices();
     if (Object.keys(livePrices).length > 0) return livePrices;
     // Redis empty — fall back to latest DB prices
-    this.logger.warn('No live prices in Redis, falling back to StockPriceHistory');
+    this.logger.warn(
+      'No live prices in Redis, falling back to StockPriceHistory',
+    );
     return this.getLatestDbPrices();
   }
 
@@ -93,18 +107,34 @@ export class StocksService {
     if (cached) {
       base = JSON.parse(cached);
     } else {
-      const priceEntries = Object.entries(prices).map(([symbol, d]) => ({ symbol, ...d }));
+      const priceEntries = Object.entries(prices).map(([symbol, d]) => ({
+        symbol,
+        ...d,
+      }));
 
       const hottest = [...priceEntries]
-        .sort((a, b) => Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0))
+        .sort(
+          (a, b) =>
+            Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0),
+        )
         .slice(0, 5)
-        .map(({ symbol, price, changePercent, timestamp }) => ({ symbol, price, changePercent, lastUpdate: timestamp }));
+        .map(({ symbol, price, changePercent, timestamp }) => ({
+          symbol,
+          price,
+          changePercent,
+          lastUpdate: timestamp,
+        }));
 
       const lowest = [...priceEntries]
         .filter((e) => e.price != null)
         .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
         .slice(0, 5)
-        .map(({ symbol, price, changePercent, timestamp }) => ({ symbol, price, changePercent, lastUpdate: timestamp }));
+        .map(({ symbol, price, changePercent, timestamp }) => ({
+          symbol,
+          price,
+          changePercent,
+          lastUpdate: timestamp,
+        }));
 
       const dbStocks = await this.prisma.stock.findMany({
         where: { pe: { not: null }, marketCap: { not: null } },
@@ -115,7 +145,7 @@ export class StocksService {
       const recommended = dbStocks.map((s) => ({
         symbol: s.symbol,
         name: s.name,
-  
+
         marketCap: s.marketCap,
         pe: s.pe?.toString() ?? null,
         ...this.enrichWithLive(s.symbol, prices),
@@ -127,12 +157,18 @@ export class StocksService {
         return Date.now() - new Date(lp.timestamp).getTime() <= 5 * 60 * 1000;
       }).length;
       const cacheTtl = freshCount > 0 ? CACHE_TTL : CACHE_TTL_STALE;
-      await this.redis.setex(DASHBOARD_CACHE_KEY, cacheTtl, JSON.stringify(base));
+      await this.redis.setex(
+        DASHBOARD_CACHE_KEY,
+        cacheTtl,
+        JSON.stringify(base),
+      );
     }
 
     let myStocks: unknown[] = [];
     if (userId) {
-      const positions = await this.prisma.position.findMany({ where: { userId, deletedAt: null } });
+      const positions = await this.prisma.position.findMany({
+        where: { userId, deletedAt: null },
+      });
       myStocks = positions.map((pos) => ({
         symbol: pos.symbol,
         totalQuantity: pos.totalQuantity.toString(),
@@ -165,7 +201,10 @@ export class StocksService {
       totalSymbols: totalDbSymbols,
       symbolsWithFreshPrice,
       symbolsWithStalePrice,
-      symbolsWithNoPrice: Math.max(0, totalDbSymbols - symbolsWithFreshPrice - symbolsWithStalePrice),
+      symbolsWithNoPrice: Math.max(
+        0,
+        totalDbSymbols - symbolsWithFreshPrice - symbolsWithStalePrice,
+      ),
       oldestUpdate: oldestUpdate?.toISOString() ?? null,
       newestUpdate: newestUpdate?.toISOString() ?? null,
     };
@@ -187,7 +226,10 @@ export class StocksService {
       orderBy: { timestamp: 'asc' },
       select: { price: true, timestamp: true },
     });
-    return rows.map((r) => ({ price: r.price.toNumber(), timestamp: r.timestamp.toISOString() }));
+    return rows.map((r) => ({
+      price: r.price.toNumber(),
+      timestamp: r.timestamp.toISOString(),
+    }));
   }
 
   // ── Single stock ─────────────────────────────────────────────────────────
@@ -220,7 +262,12 @@ export class StocksService {
         ],
       }),
       ...(minPE != null || maxPE != null
-        ? { pe: { ...(minPE != null && { gte: minPE }), ...(maxPE != null && { lte: maxPE }) } }
+        ? {
+            pe: {
+              ...(minPE != null && { gte: minPE }),
+              ...(maxPE != null && { lte: maxPE }),
+            },
+          }
         : {}),
     };
 

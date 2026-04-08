@@ -1,12 +1,25 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { RedisMonitorService } from './redis-monitor.service';
+
+/** In-memory cache entry to reduce Redis reads */
+interface CacheEntry {
+  data: Record<string, string>;
+  expiry: number;
+}
 
 @Injectable()
 export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisWriterService.name);
   private client: Redis;
+  private readonly memCache = new Map<string, CacheEntry>();
+  private static readonly MEM_CACHE_TTL_MS = 5_000; // 5 seconds
 
   constructor(
     private readonly config: ConfigService,
@@ -27,17 +40,24 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Redis writer error: ${err.message}`);
     });
 
-    this.client.connect()
+    this.client
+      .connect()
       .then(async () => {
         // Fingerprint check — confirms round-trip to correct DB
         await this.client.set(
           'app:connection:verified',
-          JSON.stringify({ service: 'trading-app', connectedAt: new Date().toISOString() }),
+          JSON.stringify({
+            service: 'trading-app',
+            connectedAt: new Date().toISOString(),
+          }),
           'EX',
           86400,
         );
         const val = await this.client.get('app:connection:verified');
-        if (!val) throw new Error('REDIS_VERIFY_FAILED: Could not read back verification key');
+        if (!val)
+          throw new Error(
+            'REDIS_VERIFY_FAILED: Could not read back verification key',
+          );
         const host = url.split('@')[1]?.split(':')[0] ?? 'unknown';
         this.logger.log(`RedisWriter verified — connected to host: ${host}`);
         this.logger.log('RedisWriter connection check: PASS');
@@ -52,15 +72,27 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
     await this.client.hset('market:prices', symbol, value);
   }
 
-  async hsetMany(data: Record<string, string>): Promise<void> {
+  async hsetMany(
+    data: Record<string, string>,
+    key = 'market:prices',
+  ): Promise<void> {
     this.monitor.increment('HSET');
-    await this.client.hset('market:prices', data);
+    await this.client.hset(key, data);
+    this.memCache.delete(key); // invalidate read cache
   }
 
   async hgetall(key: string): Promise<Record<string, string>> {
     if (!this.client) return {};
+    // Check in-memory cache first
+    const cached = this.memCache.get(key);
+    if (cached && Date.now() < cached.expiry) return cached.data;
     this.monitor.increment('HGETALL');
-    return this.client.hgetall(key) ?? {};
+    const data = (await this.client.hgetall(key)) ?? {};
+    this.memCache.set(key, {
+      data,
+      expiry: Date.now() + RedisWriterService.MEM_CACHE_TTL_MS,
+    });
+    return data;
   }
 
   async publish(channel: string, message: string): Promise<void> {
@@ -82,7 +114,6 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
     this.monitor.increment('GET');
     return this.client.get(key);
   }
-
 
   onModuleDestroy(): void {
     this.client.disconnect();

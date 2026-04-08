@@ -41,16 +41,25 @@ export class PriceScraperProcessor extends WorkerHost {
     const force: boolean = _job.data?.force === true;
 
     const now = new Date();
-    const cairoMinutes = ((now.getUTCHours() + 2) % 24) * 60 + now.getUTCMinutes();
-    const isMarketOpen = cairoMinutes >= MARKET_OPEN_MIN && cairoMinutes <= MARKET_CLOSE_MIN;
+    const cairoMinutes =
+      ((now.getUTCHours() + 2) % 24) * 60 + now.getUTCMinutes();
+    const isMarketOpen =
+      cairoMinutes >= MARKET_OPEN_MIN && cairoMinutes <= MARKET_CLOSE_MIN;
     const nextDelay = isMarketOpen ? DELAY_MARKET_OPEN : DELAY_MARKET_CLOSED;
 
     if (!force && !isMarketOpen) {
       this.logger.log('price-scraper: outside market hours — next run in 2h');
-      await this.priceQueue.add('fetch-prices', {}, { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 });
+      await this.priceQueue.add(
+        'fetch-prices',
+        {},
+        { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 },
+      );
       return;
     }
-    if (force) this.logger.log('price-scraper: forced run — bypassing market hours guard');
+    if (force)
+      this.logger.log(
+        'price-scraper: forced run — bypassing market hours guard',
+      );
 
     try {
       this.logger.log(`price-scraper: fetching ${EGXPILOT_API}`);
@@ -60,18 +69,33 @@ export class PriceScraperProcessor extends WorkerHost {
 
       if (!res.ok) throw new Error(`API returned ${res.status}`);
 
-      const json = (await res.json()) as { updatedAt: string; stocks: EgxStock[] };
+      const json = (await res.json()) as {
+        updatedAt: string;
+        stocks: EgxStock[];
+      };
       const raw = json.stocks ?? [];
 
       if (raw.length === 0) {
-        this.logger.warn('price-scraper: API returned 0 stocks — retrying in 60s');
-        if (!force) await this.priceQueue.add('fetch-prices', {}, { delay: 60_000, removeOnComplete: 10, removeOnFail: 50 });
+        this.logger.warn(
+          'price-scraper: API returned 0 stocks — retrying in 60s',
+        );
+        if (!force)
+          await this.priceQueue.add(
+            'fetch-prices',
+            {},
+            { delay: 60_000, removeOnComplete: 10, removeOnFail: 50 },
+          );
         return;
       }
 
       const timestamp = new Date().toISOString();
       const hsetBatch: Record<string, string> = {};
-      const publishBatch: { symbol: string; price: number; changePercent: number; lastUpdate: string }[] = [];
+      const publishBatch: {
+        symbol: string;
+        price: number;
+        changePercent: number;
+        lastUpdate: string;
+      }[] = [];
 
       for (const s of raw) {
         if (!s.Symbol || s.LastPrice == null) continue;
@@ -80,7 +104,10 @@ export class PriceScraperProcessor extends WorkerHost {
         const changePercent = parseFloat(s.DailyChange ?? '0') || 0;
 
         const prevPrice = this.stockStore.getPrevPrice(symbol);
-        const trending = prevPrice !== null ? Math.abs((price - prevPrice) / prevPrice) > 0.03 : false;
+        const trending =
+          prevPrice !== null
+            ? Math.abs((price - prevPrice) / prevPrice) > 0.03
+            : false;
 
         hsetBatch[symbol] = JSON.stringify({
           price,
@@ -88,9 +115,18 @@ export class PriceScraperProcessor extends WorkerHost {
           trending,
           timestamp,
           recommendation: s.Recommendation ?? null,
-          signals: { daily: s.Daily ?? null, weekly: s.Weekly ?? null, monthly: s.Monthly ?? null },
+          signals: {
+            daily: s.Daily ?? null,
+            weekly: s.Weekly ?? null,
+            monthly: s.Monthly ?? null,
+          },
         });
-        publishBatch.push({ symbol, price, changePercent, lastUpdate: timestamp });
+        publishBatch.push({
+          symbol,
+          price,
+          changePercent,
+          lastUpdate: timestamp,
+        });
         this.stockStore.savePriceData(symbol, price, changePercent, []);
         this.stockStore.savePrevPrice(symbol, price);
       }
@@ -101,24 +137,40 @@ export class PriceScraperProcessor extends WorkerHost {
         await this.redisWriter.publish('prices', JSON.stringify(publishBatch));
       }
 
-      this.logger.log(`price-scraper: wrote ${updated} prices (API updatedAt=${json.updatedAt})`);
+      this.logger.log(
+        `price-scraper: wrote ${updated} prices (API updatedAt=${json.updatedAt})`,
+      );
 
       const records = await this.stockStore.buildOutput();
       this.stockStore.writeFiles(records);
 
-      this.eventEmitter.emit(PRICES_UPDATED, { count: updated, total: raw.length });
+      this.eventEmitter.emit(PRICES_UPDATED, {
+        count: updated,
+        total: raw.length,
+      });
 
       if (!force) {
-        await this.priceQueue.add('fetch-prices', {}, { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 });
+        await this.priceQueue.add(
+          'fetch-prices',
+          {},
+          { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 },
+        );
       }
     } catch (error) {
-      this.logger.error({
-        event: 'SCRAPER_FAILED',
-        processor: 'price-scraper',
-        error: (error as Error).message,
-      }, 'Scraper job failed');
+      this.logger.error(
+        {
+          event: 'SCRAPER_FAILED',
+          processor: 'price-scraper',
+          error: (error as Error).message,
+        },
+        'Scraper job failed',
+      );
       if (!force) {
-        await this.priceQueue.add('fetch-prices', {}, { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 });
+        await this.priceQueue.add(
+          'fetch-prices',
+          {},
+          { delay: nextDelay, removeOnComplete: 10, removeOnFail: 50 },
+        );
       }
       throw error;
     }

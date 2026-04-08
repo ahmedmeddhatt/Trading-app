@@ -50,7 +50,8 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
+    if (!user || !user.passwordHash)
+      throw new UnauthorizedException('Invalid credentials');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
@@ -58,8 +59,12 @@ export class AuthService {
     return user;
   }
 
-  async forgotPassword(dto: ForgotPasswordDto): Promise<{ resetToken: string }> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+  async forgotPassword(
+    dto: ForgotPasswordDto,
+  ): Promise<{ resetToken: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (!user) throw new NotFoundException('No account with that email');
 
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -80,7 +85,8 @@ export class AuthService {
     });
 
     if (!user) throw new BadRequestException('Invalid or expired reset token');
-    if (new Date() > user.resetTokenExpiry) throw new BadRequestException('Reset token has expired');
+    if (new Date() > user.resetTokenExpiry)
+      throw new BadRequestException('Reset token has expired');
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
@@ -96,7 +102,9 @@ export class AuthService {
     const idField = dto.provider === 'google' ? 'googleId' : 'appleId';
 
     return this.prisma.user.upsert({
-      where: { [dto.provider === 'google' ? 'googleId' : 'appleId']: dto.providerId } as any,
+      where: {
+        [dto.provider === 'google' ? 'googleId' : 'appleId']: dto.providerId,
+      } as any,
       update: {},
       create: {
         email: dto.email,

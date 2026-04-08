@@ -54,16 +54,22 @@ export class NewsScraperService {
       const mubasherNews = await this.scrapeMubasher(symbol);
       results.push(...mubasherNews);
     } catch (err) {
-      this.logger.warn(`Mubasher scrape failed for ${symbol}: ${(err as Error).message}`);
+      this.logger.warn(
+        `Mubasher scrape failed for ${symbol}: ${(err as Error).message}`,
+      );
     }
 
     // Try Google News search as fallback
     if (results.length < 3) {
       try {
-        const googleNews = await this.scrapeGoogleNews(`${symbol} EGX بورصة مصر`);
+        const googleNews = await this.scrapeGoogleNews(
+          `${symbol} EGX بورصة مصر`,
+        );
         results.push(...googleNews);
       } catch (err) {
-        this.logger.warn(`Google News scrape failed for ${symbol}: ${(err as Error).message}`);
+        this.logger.warn(
+          `Google News scrape failed for ${symbol}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -74,7 +80,9 @@ export class NewsScraperService {
     const results: NewsItem[] = [];
 
     try {
-      const googleNews = await this.scrapeGoogleNews('البورصة المصرية EGX Egyptian stock market');
+      const googleNews = await this.scrapeGoogleNews(
+        'البورصة المصرية EGX Egyptian stock market',
+      );
       results.push(...googleNews);
     } catch (err) {
       this.logger.warn(`Market news scrape failed: ${(err as Error).message}`);
@@ -91,12 +99,18 @@ export class NewsScraperService {
     const $ = cheerio.load(html);
     const items: NewsItem[] = [];
 
-    $('a[href*="/news/"], .news-item, .article-title, h3 a, h2 a').each((_, el) => {
-      const title = $(el).text().trim();
-      if (title && title.length > 10 && items.length < 5) {
-        items.push({ title, source: 'Mubasher', date: new Date().toISOString().split('T')[0] });
-      }
-    });
+    $('a[href*="/news/"], .news-item, .article-title, h3 a, h2 a').each(
+      (_, el) => {
+        const title = $(el).text().trim();
+        if (title && title.length > 10 && items.length < 5) {
+          items.push({
+            title,
+            source: 'Mubasher',
+            date: new Date().toISOString().split('T')[0],
+          });
+        }
+      },
+    );
 
     return items;
   }
@@ -123,7 +137,9 @@ export class NewsScraperService {
           items.push({
             title,
             source: source || 'Google News',
-            date: pubDate ? new Date(pubDate).toISOString().split('T')[0] : undefined,
+            date: pubDate
+              ? new Date(pubDate).toISOString().split('T')[0]
+              : undefined,
           });
         }
       });
@@ -138,8 +154,9 @@ export class NewsScraperService {
     try {
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml',
           'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
         },
         signal: AbortSignal.timeout(10000),

@@ -1,12 +1,20 @@
-import { Controller, Get, Param, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { StocksService } from './stocks.service';
 import { StocksQueryDto } from './dto/stocks-query.dto';
 import { AuthGuard } from '@nestjs/passport';
 
 /** Optional JWT — attaches user if present, never rejects unauthenticated requests */
 class OptionalJwtGuard extends AuthGuard('jwt') {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handleRequest(_err: any, user: any): any { return user ?? null; }
+  handleRequest(_err: any, user: any): any {
+    return user ?? null;
+  }
 }
 
 @Controller('stocks')

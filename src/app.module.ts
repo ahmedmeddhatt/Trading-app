@@ -14,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { StocksModule } from './modules/stocks/stocks.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { GoldModule } from './modules/gold/gold.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
 @Module({
@@ -26,7 +27,12 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
           req: (req) => ({ method: req.method, url: req.url }),
           res: (res) => ({ statusCode: res.statusCode }),
         },
-        customLogLevel: (_req, res) => res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+        customLogLevel: (_req, res) =>
+          res.statusCode >= 500
+            ? 'error'
+            : res.statusCode >= 400
+              ? 'warn'
+              : 'info',
       },
     }),
     EventEmitterModule.forRoot(),
@@ -42,6 +48,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     HealthModule,
     StocksModule,
     AdminModule,
+    GoldModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -52,7 +52,9 @@ export class TransactionsService {
    * by replaying all remaining (non-deleted) transactions for that symbol.
    */
   async softDelete(transactionId: string, userId: string): Promise<void> {
-    const tx = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
+    const tx = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+    });
     if (!tx) throw new Error('Transaction not found');
     if (tx.userId !== userId) throw new Error('Unauthorized');
     if (tx.deletedAt) throw new Error('Transaction already deleted');
@@ -158,6 +160,8 @@ export class TransactionsService {
       }
     });
 
-    this.logger.log(`Transaction soft-deleted: ${transactionId} | ${symbol} | position recalculated`);
+    this.logger.log(
+      `Transaction soft-deleted: ${transactionId} | ${symbol} | position recalculated`,
+    );
   }
 }

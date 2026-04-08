@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateUserDto } from '../../common/dto/create-user.dto';
-import { User, InvestmentHorizon } from '@prisma/client';
+import { User, InvestmentHorizon, TradingMode } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -24,7 +24,9 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto) {
-    const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : null;
+    const passwordHash = dto.password
+      ? await bcrypt.hash(dto.password, 10)
+      : null;
     return this.strip(
       await this.prisma.user.create({
         data: { email: dto.email, name: dto.name, passwordHash },
@@ -32,10 +34,20 @@ export class UsersService {
     );
   }
 
-  async updatePreferences(id: string, preferences: { investmentHorizon?: InvestmentHorizon }) {
+  async updatePreferences(
+    id: string,
+    preferences: {
+      investmentHorizon?: InvestmentHorizon;
+      tradingMode?: TradingMode;
+    },
+  ) {
+    const data: Record<string, any> = {};
+    if (preferences.investmentHorizon)
+      data.investmentHorizon = preferences.investmentHorizon;
+    if (preferences.tradingMode) data.tradingMode = preferences.tradingMode;
     const user = await this.prisma.user.update({
       where: { id },
-      data: { investmentHorizon: preferences.investmentHorizon },
+      data,
     });
     return this.strip(user);
   }

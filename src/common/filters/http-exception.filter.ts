@@ -14,8 +14,7 @@ const PRISMA_DB_UNREACHABLE = new Set(['P1001', 'P1002', 'P1008', 'P1017']);
 function isPrismaError(e: unknown): e is Error & { code?: string } {
   return (
     e instanceof Error &&
-    (e.constructor.name.startsWith('PrismaClient') ||
-      'code' in (e as any))
+    (e.constructor.name.startsWith('PrismaClient') || 'code' in (e as any))
   );
 }
 
@@ -39,7 +38,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message =
         typeof body === 'string'
           ? body
-          : (body as any).message ?? exception.message;
+          : ((body as any).message ?? exception.message);
     } else if (isPrismaError(exception)) {
       const code = (exception as any).code as string | undefined;
       const msg = (exception as Error).message ?? '';
@@ -54,7 +53,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (isDbDown) {
         status = HttpStatus.SERVICE_UNAVAILABLE;
-        message = 'Database is temporarily unavailable. Please try again later.';
+        message =
+          'Database is temporarily unavailable. Please try again later.';
       } else if (code === 'P2002') {
         status = HttpStatus.CONFLICT;
         message = 'A record with this value already exists.';
@@ -72,7 +72,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         exception.message.includes('Tenant or user not found')
       ) {
         status = HttpStatus.SERVICE_UNAVAILABLE;
-        message = 'Database is temporarily unavailable. Please try again later.';
+        message =
+          'Database is temporarily unavailable. Please try again later.';
       }
     }
 

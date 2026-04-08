@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, NotFoundException, Param, Query, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  NotFoundException,
+  Param,
+  Query,
+  BadRequestException,
+} from '@nestjs/common';
 import { StockStoreService } from './stock-store.service';
 import { RedisWriterService } from './redis-writer.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -29,7 +38,11 @@ export class StocksController {
     const horizon = validHorizons.includes(body.horizon as any)
       ? (body.horizon as 'SPECULATION' | 'MID_TERM' | 'LONG_TERM')
       : 'MID_TERM';
-    const results = await this.geminiAnalysis.analyzeStrategy(body.strategyId, body.symbols, horizon);
+    const results = await this.geminiAnalysis.analyzeStrategy(
+      body.strategyId,
+      body.symbols,
+      horizon,
+    );
     return { results };
   }
 
@@ -50,7 +63,9 @@ export class StocksController {
         pe: (stock as any).pe ?? null,
         price: p?.price ?? null,
         changePercent: p?.changePercent ?? null,
-        lastUpdate: p?.timestamp ? new Date(p.timestamp as number).toISOString() : null,
+        lastUpdate: p?.timestamp
+          ? new Date(p.timestamp as number).toISOString()
+          : null,
         recommendation: p?.recommendation ?? null,
         signals: p?.signals ?? { daily: null, weekly: null, monthly: null },
       };
@@ -59,7 +74,10 @@ export class StocksController {
     const withPrice = enriched.filter((s) => s.price !== null);
 
     const hottest = [...withPrice]
-      .sort((a, b) => Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0))
+      .sort(
+        (a, b) =>
+          Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0),
+      )
       .slice(0, 5);
 
     const lowest = [...withPrice]
@@ -108,8 +126,12 @@ export class StocksController {
         symbolsWithFreshPrice,
         symbolsWithStalePrice,
         symbolsWithNoPrice,
-        newestUpdate: newestUpdate ? new Date(newestUpdate).toISOString() : null,
-        oldestUpdate: oldestUpdate ? new Date(oldestUpdate).toISOString() : null,
+        newestUpdate: newestUpdate
+          ? new Date(newestUpdate).toISOString()
+          : null,
+        oldestUpdate: oldestUpdate
+          ? new Date(oldestUpdate).toISOString()
+          : null,
         totalSymbols: list.length,
       },
     };
@@ -134,11 +156,18 @@ export class StocksController {
       ];
     }
 
-    if (minPE) where.pe = { ...((where.pe as object) ?? {}), gte: parseFloat(minPE) };
-    if (maxPE) where.pe = { ...((where.pe as object) ?? {}), lte: parseFloat(maxPE) };
+    if (minPE)
+      where.pe = { ...((where.pe as object) ?? {}), gte: parseFloat(minPE) };
+    if (maxPE)
+      where.pe = { ...((where.pe as object) ?? {}), lte: parseFloat(maxPE) };
 
     const [stocks, total] = await Promise.all([
-      this.prisma.stock.findMany({ where, take, skip, orderBy: { symbol: 'asc' } }),
+      this.prisma.stock.findMany({
+        where,
+        take,
+        skip,
+        orderBy: { symbol: 'asc' },
+      }),
       this.prisma.stock.count({ where }),
     ]);
 
@@ -156,7 +185,9 @@ export class StocksController {
           marketCap: s.marketCap,
           price: p?.price ?? null,
           changePercent: p?.changePercent ?? null,
-          lastUpdate: p?.timestamp ? new Date(p.timestamp as number).toISOString() : null,
+          lastUpdate: p?.timestamp
+            ? new Date(p.timestamp as number).toISOString()
+            : null,
           recommendation: p?.recommendation ?? null,
           signals: p?.signals ?? { daily: null, weekly: null, monthly: null },
         };
@@ -191,9 +222,13 @@ export class StocksController {
   ) {
     const sym = symbol.toUpperCase();
     const fromDate = from ? new Date(from) : new Date(0);
-    const toDate = to ? new Date(to + 'T23:59:59.999Z') : new Date('9999-12-31');
+    const toDate = to
+      ? new Date(to + 'T23:59:59.999Z')
+      : new Date('9999-12-31');
 
-    const rows = await this.prisma.$queryRaw<Array<{ price: number; timestamp: Date }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ price: number; timestamp: Date }>
+    >`
       SELECT price::float8, timestamp
       FROM stock_price_history
       WHERE symbol = ${sym}
@@ -226,7 +261,10 @@ export class StocksController {
     ]);
 
     if (!stock) {
-      throw new NotFoundException({ success: false, message: 'Stock not found' });
+      throw new NotFoundException({
+        success: false,
+        message: 'Stock not found',
+      });
     }
 
     const p = priceRaw ? JSON.parse(priceRaw) : null;
@@ -237,10 +275,17 @@ export class StocksController {
       price: r.price,
     }));
     if (p?.price != null) {
-      const liveTs = p.timestamp ? new Date(p.timestamp as number).toISOString() : new Date().toISOString();
+      const liveTs = p.timestamp
+        ? new Date(p.timestamp as number).toISOString()
+        : new Date().toISOString();
       // Append live price as latest point if not already the last entry
-      const lastTs = history.length ? history[history.length - 1].timestamp : null;
-      if (!lastTs || new Date(liveTs).getTime() - new Date(lastTs).getTime() > 60_000) {
+      const lastTs = history.length
+        ? history[history.length - 1].timestamp
+        : null;
+      if (
+        !lastTs ||
+        new Date(liveTs).getTime() - new Date(lastTs).getTime() > 60_000
+      ) {
         history.push({ timestamp: liveTs, price: p.price });
       }
     }
@@ -253,7 +298,9 @@ export class StocksController {
       marketCap: stock.marketCap ?? details?.marketCap ?? null,
       price: p?.price ?? null,
       changePercent: p?.changePercent ?? null,
-      lastUpdate: p?.timestamp ? new Date(p.timestamp as number).toISOString() : null,
+      lastUpdate: p?.timestamp
+        ? new Date(p.timestamp as number).toISOString()
+        : null,
       recommendation: p?.recommendation ?? null,
       signals: p?.signals ?? { daily: null, weekly: null, monthly: null },
       priceHistory: history,

@@ -16,4 +16,13 @@ export class PricesService {
       map((update) => ({ data: update }) as MessageEvent),
     );
   }
+
+  getGoldStream(categoryId?: string): Observable<MessageEvent> {
+    return this.redis.goldPriceUpdates$.pipe(
+      filter((update) =>
+        categoryId ? update.categoryId === categoryId : true,
+      ),
+      map((update) => ({ data: update }) as MessageEvent),
+    );
+  }
 }

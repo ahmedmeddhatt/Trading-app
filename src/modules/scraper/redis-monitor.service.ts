@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 
 @Injectable()
 export class RedisMonitorService implements OnModuleInit, OnModuleDestroy {
@@ -20,22 +25,28 @@ export class RedisMonitorService implements OnModuleInit, OnModuleDestroy {
     void operation;
     this.requestCount++;
 
-    if (this.requestCount === 200_000) {
-      this.logger.warn({
-        event: 'REDIS_QUOTA_WARNING',
-        requests: this.requestCount,
-        limit: 250_000,
-        percentUsed: 80,
-        sessionDurationHours: (Date.now() - this.sessionStart) / 3_600_000,
-      }, 'Upstash request count at 80% of monthly limit');
+    if (this.requestCount === 120_000) {
+      this.logger.warn(
+        {
+          event: 'REDIS_QUOTA_WARNING',
+          requests: this.requestCount,
+          limit: 150_000,
+          percentUsed: 80,
+          sessionDurationHours: (Date.now() - this.sessionStart) / 3_600_000,
+        },
+        'Upstash request count at 80% of 150k monthly limit',
+      );
     }
 
-    if (this.requestCount === 240_000) {
-      this.logger.error({
-        event: 'REDIS_QUOTA_CRITICAL',
-        requests: this.requestCount,
-        limit: 250_000,
-      }, 'CRITICAL: Upstash requests at 96% of monthly limit');
+    if (this.requestCount === 140_000) {
+      this.logger.error(
+        {
+          event: 'REDIS_QUOTA_CRITICAL',
+          requests: this.requestCount,
+          limit: 150_000,
+        },
+        'CRITICAL: Upstash requests at 93% of 150k monthly limit',
+      );
     }
   }
 
@@ -44,20 +55,23 @@ export class RedisMonitorService implements OnModuleInit, OnModuleDestroy {
     const ratePerHour = this.requestCount / Math.max(hoursSinceStart, 1);
     const projectedMonthly = ratePerHour * 24 * 30;
 
-    this.logger.log({
-      event: 'REDIS_USAGE_STATS',
-      sessionRequests: this.requestCount,
-      ratePerHour: Math.round(ratePerHour),
-      projectedMonthly: Math.round(projectedMonthly),
-      monthlyLimit: 250_000,
-      projectedUsagePercent: Math.round((projectedMonthly / 250_000) * 100),
-    }, 'Redis usage stats');
+    this.logger.log(
+      {
+        event: 'REDIS_USAGE_STATS',
+        sessionRequests: this.requestCount,
+        ratePerHour: Math.round(ratePerHour),
+        projectedMonthly: Math.round(projectedMonthly),
+        monthlyLimit: 150_000,
+        projectedUsagePercent: Math.round((projectedMonthly / 150_000) * 100),
+      },
+      'Redis usage stats',
+    );
 
-    if (projectedMonthly > 450_000) {
+    if (projectedMonthly > 120_000) {
       this.logger.warn(
         `Redis projected monthly usage: ${Math.round(projectedMonthly)} ` +
-        `(${Math.round((projectedMonthly / 250_000) * 100)}% of limit). ` +
-        `Check for unexpected polling.`,
+          `(${Math.round((projectedMonthly / 150_000) * 100)}% of limit). ` +
+          `Check for unexpected polling.`,
       );
     }
   }

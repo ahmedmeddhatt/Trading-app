@@ -4,7 +4,10 @@ import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../../../database/prisma.service';
 import { StockStoreService } from '../stock-store.service';
 
-const JOB_OPTS = { attempts: 3, backoff: { type: 'fixed' as const, delay: 5_000 } };
+const JOB_OPTS = {
+  attempts: 3,
+  backoff: { type: 'fixed' as const, delay: 5_000 },
+};
 
 const EGXPILOT_API = 'https://egxpilot.com/api/stocks/all';
 
@@ -39,7 +42,10 @@ export class ListScraperProcessor extends WorkerHost {
 
     if (!res.ok) throw new Error(`API returned ${res.status}`);
 
-    const json = (await res.json()) as { updatedAt: string; stocks: EgxStock[] };
+    const json = (await res.json()) as {
+      updatedAt: string;
+      stocks: EgxStock[];
+    };
     const raw = json.stocks ?? [];
 
     const stocks = raw
@@ -50,7 +56,9 @@ export class ListScraperProcessor extends WorkerHost {
         sector: s.Sector?.trim() || 'Unknown',
       }));
 
-    this.logger.log(`list-scraper: fetched ${stocks.length} stocks (updatedAt=${json.updatedAt})`);
+    this.logger.log(
+      `list-scraper: fetched ${stocks.length} stocks (updatedAt=${json.updatedAt})`,
+    );
 
     await this.stockStore.saveList(stocks);
     this.logger.log('list-scraper: saved symbol list to Redis market:list');

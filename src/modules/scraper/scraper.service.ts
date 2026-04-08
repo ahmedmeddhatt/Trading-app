@@ -37,14 +37,20 @@ export class ScraperService implements OnModuleInit {
     await this.resumeIfPaused(this.priceQueue, 'price-scraper');
 
     // Daily list refresh
-    await this.listQueue.add('fetch-list', {}, {
-      ...JOB_OPTS,
-      repeat: { every: 24 * 60 * 60 * 1_000 },
-    });
+    await this.listQueue.add(
+      'fetch-list',
+      {},
+      {
+        ...JOB_OPTS,
+        repeat: { every: 24 * 60 * 60 * 1_000 },
+      },
+    );
 
     // Immediate first run for list (queued)
     await this.listQueue.add('fetch-list-boot', {}, JOB_OPTS);
-    this.logger.log('Boot list-scrape job enqueued — waiting for processor to pick up');
+    this.logger.log(
+      'Boot list-scrape job enqueued — waiting for processor to pick up',
+    );
 
     // Price scraper: self-chaining (30s during market hours, 2h outside)
     await this.priceQueue.add('fetch-prices', {}, JOB_OPTS);
@@ -53,20 +59,28 @@ export class ScraperService implements OnModuleInit {
     const listWaiting = await this.listQueue.getWaitingCount();
     const listActive = await this.listQueue.getActiveCount();
     const listFailed = await this.listQueue.getFailedCount();
-    this.logger.log(`list-scraper queue on boot: waiting=${listWaiting} active=${listActive} failed=${listFailed}`);
+    this.logger.log(
+      `list-scraper queue on boot: waiting=${listWaiting} active=${listActive} failed=${listFailed}`,
+    );
 
     // Hourly price archival (market hours only)
-    await this.archiverQueue.add('archive-prices', {}, {
-      ...JOB_OPTS,
-      repeat: { every: 60 * 60 * 1_000 },
-    });
+    await this.archiverQueue.add(
+      'archive-prices',
+      {},
+      {
+        ...JOB_OPTS,
+        repeat: { every: 60 * 60 * 1_000 },
+      },
+    );
 
     // Immediate archive on boot if market is open
     if (isMarketHours()) {
       await this.archiverQueue.add('archive-prices-boot', {}, JOB_OPTS);
     }
 
-    this.logger.log('Scraper scheduled: list every 24h, prices every 30s, archiver every 1h');
+    this.logger.log(
+      'Scraper scheduled: list every 24h, prices every 30s, archiver every 1h',
+    );
   }
 
   async triggerListScrape(): Promise<void> {

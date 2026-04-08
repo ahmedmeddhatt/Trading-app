@@ -40,14 +40,18 @@ export class DetailScraperProcessor extends WorkerHost {
   // Single job scrapes the SimplyWallSt large-cap list page for all EG stocks
   async process(_job: Job): Promise<void> {
     const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+    const browser = await chromium.launch({
+      headless: true,
+      args: LAUNCH_ARGS,
+    });
 
     try {
       const context = await browser.newContext({
         userAgent: ua,
         extraHTTPHeaders: {
           'Accept-Language': 'en-US,en;q=0.9',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
         viewport: { width: 1280, height: 800 },
       });
@@ -59,46 +63,50 @@ export class DetailScraperProcessor extends WorkerHost {
       });
       await page.waitForSelector('table tbody tr', { timeout: 20_000 });
 
-      const rows: { symbol: string; details: StockDetails }[] = await page.evaluate(() => {
-        const result: { symbol: string; details: StockDetails }[] = [];
+      const rows: { symbol: string; details: StockDetails }[] =
+        await page.evaluate(() => {
+          const result: { symbol: string; details: StockDetails }[] = [];
 
-        document.querySelectorAll('table tbody tr').forEach((tr) => {
-          const cells = tr.querySelectorAll('td');
-          if (cells.length < 8) return;
+          document.querySelectorAll('table tbody tr').forEach((tr) => {
+            const cells = tr.querySelectorAll('td');
+            if (cells.length < 8) return;
 
-          // col[1]: "COMICommercial International Bank Egypt (CIB)E" → extract symbol prefix
-          const nameCell = cells[1]?.textContent?.trim() ?? '';
-          const symbolMatch = nameCell.match(/^([A-Z0-9]+)/);
-          const symbol = symbolMatch?.[1] ?? '';
-          if (!symbol) return;
+            // col[1]: "COMICommercial International Bank Egypt (CIB)E" → extract symbol prefix
+            const nameCell = cells[1]?.textContent?.trim() ?? '';
+            const symbolMatch = nameCell.match(/^([A-Z0-9]+)/);
+            const symbol = symbolMatch?.[1] ?? '';
+            if (!symbol) return;
 
-          // col[2]: price like "ج.م138.00"
-          const priceRaw = cells[2]?.textContent?.trim().replace(/[^0-9.]/g, '') ?? '';
-          const price = parseFloat(priceRaw) || null;
+            // col[2]: price like "ج.م138.00"
+            const priceRaw =
+              cells[2]?.textContent?.trim().replace(/[^0-9.]/g, '') ?? '';
+            const price = parseFloat(priceRaw) || null;
 
-          // col[5]: market cap like "ج.م466.2b"
-          const marketCap = cells[5]?.textContent?.trim() ?? null;
+            // col[5]: market cap like "ج.م466.2b"
+            const marketCap = cells[5]?.textContent?.trim() ?? null;
 
-          // col[7]: "PB2.0" or "PE12.2"
-          const pbPeText = cells[7]?.textContent?.trim() ?? '';
-          const pe = pbPeText.startsWith('PE') ? parseFloat(pbPeText.replace('PE', '')) : null;
+            // col[7]: "PB2.0" or "PE12.2"
+            const pbPeText = cells[7]?.textContent?.trim() ?? '';
+            const pe = pbPeText.startsWith('PE')
+              ? parseFloat(pbPeText.replace('PE', ''))
+              : null;
 
-          // col[10]: sector
-          const sector = cells[10]?.textContent?.trim() ?? null;
+            // col[10]: sector
+            const sector = cells[10]?.textContent?.trim() ?? null;
 
-          result.push({
-            symbol,
-            details: {
-              price: isNaN(price as number) ? null : price,
-              marketCap: marketCap || null,
-              pe: pe !== null && isNaN(pe) ? null : pe,
-              valuation: sector, // use sector as valuation label
-            },
+            result.push({
+              symbol,
+              details: {
+                price: isNaN(price as number) ? null : price,
+                marketCap: marketCap || null,
+                pe: pe !== null && isNaN(pe) ? null : pe,
+                valuation: sector, // use sector as valuation label
+              },
+            });
           });
-        });
 
-        return result;
-      });
+          return result;
+        });
 
       this.logger.log(`SimplyWallSt: scraped ${rows.length} large-cap stocks`);
 

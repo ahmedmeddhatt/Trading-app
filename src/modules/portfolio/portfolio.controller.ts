@@ -32,7 +32,12 @@ export class PortfolioController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.portfolioService.getTransactionsMaster(userId, { symbol, type, from, to });
+    return this.portfolioService.getTransactionsMaster(userId, {
+      symbol,
+      type,
+      from,
+      to,
+    });
   }
 
   @Get(':userId/transactions/:id/detail')
@@ -50,7 +55,10 @@ export class PortfolioController {
     @Param('userId') userId: string,
     @Param('symbol') symbol: string,
   ) {
-    return this.portfolioService.getPositionDetail(userId, symbol.toUpperCase());
+    return this.portfolioService.getPositionDetail(
+      userId,
+      symbol.toUpperCase(),
+    );
   }
 
   @Get(':userId/risk')
@@ -71,7 +79,10 @@ export class PortfolioController {
     @Param('userId') userId: string,
     @Query('year') year?: string,
   ) {
-    return this.portfolioService.getPnLCalendar(userId, year ? parseInt(year) : new Date().getFullYear());
+    return this.portfolioService.getPnLCalendar(
+      userId,
+      year ? parseInt(year) : new Date().getFullYear(),
+    );
   }
 
   @Get(':userId/closed-trades')
@@ -102,7 +113,9 @@ export class PortfolioController {
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const fromDate = from
+      ? new Date(from)
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const toDate = to ? new Date(to) : new Date();
     return this.portfolioService.getTimeline(userId, fromDate, toDate);
   }

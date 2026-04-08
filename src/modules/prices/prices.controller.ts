@@ -10,7 +10,13 @@ export class PricesController {
 
   @Sse('prices')
   @UseGuards(JwtAuthGuard)
-  stream(@Query('symbol') symbol?: string): Observable<MessageEvent> {
+  stream(
+    @Query('symbol') symbol?: string,
+    @Query('mode') mode?: string,
+  ): Observable<MessageEvent> {
+    if (mode === 'gold') {
+      return this.pricesService.getGoldStream(symbol);
+    }
     return this.pricesService.getStream(symbol);
   }
 }

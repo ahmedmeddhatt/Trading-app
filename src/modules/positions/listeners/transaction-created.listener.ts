@@ -11,7 +11,9 @@ export class TransactionCreatedListener {
   constructor(private readonly positionsService: PositionsService) {}
 
   @OnEvent(TRANSACTION_CREATED)
-  async handleTransactionCreated(event: TransactionCreatedEvent): Promise<void> {
+  async handleTransactionCreated(
+    event: TransactionCreatedEvent,
+  ): Promise<void> {
     this.logger.log(
       `Handling transaction.created: ${event.transaction.id} | ${event.transaction.type} ${event.transaction.quantity} ${event.transaction.symbol}`,
     );

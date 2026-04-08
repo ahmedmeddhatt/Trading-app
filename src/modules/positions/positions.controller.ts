@@ -11,10 +11,7 @@ export class PositionsController {
   }
 
   @Get('user/:userId/:symbol')
-  findOne(
-    @Param('userId') userId: string,
-    @Param('symbol') symbol: string,
-  ) {
+  findOne(@Param('userId') userId: string, @Param('symbol') symbol: string) {
     return this.positionsService.findOne(userId, symbol.toUpperCase());
   }
 }

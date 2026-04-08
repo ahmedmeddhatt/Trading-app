@@ -11,7 +11,12 @@ import Decimal from 'decimal.js';
 
 function priceJson(price: number, changePercent: number, ageMs = 0) {
   const ts = new Date(Date.now() - ageMs).toISOString();
-  return JSON.stringify({ price, changePercent, trending: false, timestamp: ts });
+  return JSON.stringify({
+    price,
+    changePercent,
+    trending: false,
+    timestamp: ts,
+  });
 }
 
 const mockPrisma = {
@@ -49,7 +54,13 @@ describe('StocksService', () => {
       mockRedis.setex.mockResolvedValue(undefined);
       mockPrisma.stock.count.mockResolvedValue(3);
       mockPrisma.stock.findMany.mockResolvedValue([
-        { symbol: 'COMI', name: 'CIB', sector: 'Banking', marketCap: '1000', pe: new Decimal('10') },
+        {
+          symbol: 'COMI',
+          name: 'CIB',
+          sector: 'Banking',
+          marketCap: '1000',
+          pe: new Decimal('10'),
+        },
       ]);
       mockPrisma.position.findMany.mockResolvedValue([]);
     });
@@ -62,7 +73,10 @@ describe('StocksService', () => {
       });
 
       const result = await service.getDashboard();
-      const hottest = result.hottest as Array<{ symbol: string; changePercent: number }>;
+      const hottest = result.hottest as Array<{
+        symbol: string;
+        changePercent: number;
+      }>;
       // Expected order: HRHO(-8=8), EFIH(5), COMI(2)
       expect(hottest[0].symbol).toBe('HRHO');
       expect(hottest[1].symbol).toBe('EFIH');
@@ -130,7 +144,7 @@ describe('StocksService', () => {
       const STALE_AGE = 10 * 60 * 1000;
       mockPrisma.stock.count.mockResolvedValue(4); // 4 symbols in DB
       mockRedis.hgetall.mockResolvedValue({
-        COMI: priceJson(50, 1, 0),          // fresh
+        COMI: priceJson(50, 1, 0), // fresh
         HRHO: priceJson(100, 2, STALE_AGE), // stale
         // EFIH missing from Redis → no price
       });
@@ -150,7 +164,12 @@ describe('StocksService', () => {
 
     it('myStocks populated when userId provided and positions exist', async () => {
       mockPrisma.position.findMany.mockResolvedValue([
-        { symbol: 'COMI', totalQuantity: new Decimal('10'), averagePrice: new Decimal('50'), totalInvested: new Decimal('500') },
+        {
+          symbol: 'COMI',
+          totalQuantity: new Decimal('10'),
+          averagePrice: new Decimal('50'),
+          totalInvested: new Decimal('500'),
+        },
       ]);
       mockRedis.hgetall.mockResolvedValue({ COMI: priceJson(55, 1) });
 
@@ -187,10 +206,17 @@ describe('StocksService', () => {
       mockPrisma.stock.findMany.mockResolvedValue([]);
       mockPrisma.stock.count.mockResolvedValue(0);
 
-      await service.searchStocks({ sector: 'Banking', page: 1, limit: 20 } as any);
+      await service.searchStocks({
+        sector: 'Banking',
+        page: 1,
+        limit: 20,
+      } as any);
 
       const whereArg = mockPrisma.stock.findMany.mock.calls[0][0].where;
-      expect(whereArg.sector).toEqual({ contains: 'Banking', mode: 'insensitive' });
+      expect(whereArg.sector).toEqual({
+        contains: 'Banking',
+        mode: 'insensitive',
+      });
     });
 
     it('passes search filter as OR clause on symbol and name', async () => {
@@ -208,7 +234,12 @@ describe('StocksService', () => {
       mockPrisma.stock.findMany.mockResolvedValue([]);
       mockPrisma.stock.count.mockResolvedValue(0);
 
-      await service.searchStocks({ minPE: 5, maxPE: 20, page: 1, limit: 20 } as any);
+      await service.searchStocks({
+        minPE: 5,
+        maxPE: 20,
+        page: 1,
+        limit: 20,
+      } as any);
 
       const whereArg = mockPrisma.stock.findMany.mock.calls[0][0].where;
       expect(whereArg.pe).toEqual({ gte: 5, lte: 20 });
@@ -216,7 +247,13 @@ describe('StocksService', () => {
 
     it('enriches results with live prices from Redis', async () => {
       mockPrisma.stock.findMany.mockResolvedValue([
-        { symbol: 'COMI', name: 'CIB', sector: 'Banking', marketCap: '1000', pe: new Decimal('10') },
+        {
+          symbol: 'COMI',
+          name: 'CIB',
+          sector: 'Banking',
+          marketCap: '1000',
+          pe: new Decimal('10'),
+        },
       ]);
       mockPrisma.stock.count.mockResolvedValue(1);
       mockRedis.hgetall.mockResolvedValue({ COMI: priceJson(55, 2) });

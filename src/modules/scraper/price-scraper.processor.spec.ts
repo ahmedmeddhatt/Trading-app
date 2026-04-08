@@ -96,8 +96,11 @@ describe('PriceScraperProcessor', () => {
 
   describe('happy path — 5 price rows scraped', () => {
     const fiveStocks = [
-      { symbol: 'COMI' }, { symbol: 'HRHO' }, { symbol: 'EFIH' },
-      { symbol: 'EKHO' }, { symbol: 'ABUK' },
+      { symbol: 'COMI' },
+      { symbol: 'HRHO' },
+      { symbol: 'EFIH' },
+      { symbol: 'EKHO' },
+      { symbol: 'ABUK' },
     ];
 
     beforeEach(() => {
@@ -130,14 +133,18 @@ describe('PriceScraperProcessor', () => {
 
     it('stores correct symbol key in hset calls', async () => {
       await processor.process(fakeJob);
-      const hsetSymbols = mockRedisWriter.hset.mock.calls.map((c: any[]) => c[0]);
+      const hsetSymbols = mockRedisWriter.hset.mock.calls.map(
+        (c: any[]) => c[0],
+      );
       expect(hsetSymbols).toContain('COMI');
       expect(hsetSymbols).toContain('HRHO');
     });
 
     it('stored JSON includes price, changePercent, and trending fields', async () => {
       await processor.process(fakeJob);
-      const comiCall = mockRedisWriter.hset.mock.calls.find((c: any[]) => c[0] === 'COMI');
+      const comiCall = mockRedisWriter.hset.mock.calls.find(
+        (c: any[]) => c[0] === 'COMI',
+      );
       const payload = JSON.parse(comiCall[1]);
       expect(payload.price).toBe(55.5);
       expect(payload.changePercent).toBe(1.2);
@@ -185,7 +192,9 @@ describe('PriceScraperProcessor', () => {
         return Promise.resolve(null);
       });
 
-      await expect(processor.process(fakeJob)).rejects.toThrow('CLOUDFLARE_BLOCKED');
+      await expect(processor.process(fakeJob)).rejects.toThrow(
+        'CLOUDFLARE_BLOCKED',
+      );
     });
 
     it('closes browser on Cloudflare error', async () => {
@@ -204,14 +213,18 @@ describe('PriceScraperProcessor', () => {
       mockStockStore.getList.mockResolvedValue([{ symbol: 'COMI' }]);
       // All selectors return null (no table found)
       mockPage.$.mockResolvedValue(null);
-      mockPage.waitForSelector.mockRejectedValue(new Error('Timeout 30000ms exceeded'));
+      mockPage.waitForSelector.mockRejectedValue(
+        new Error('Timeout 30000ms exceeded'),
+      );
       mockPage.$$eval.mockResolvedValue([
         { id: 'data-grid', class: 'react-table', rows: 0 },
       ]);
     });
 
     it('throws NO_TABLE_FOUND when no known selector matches', async () => {
-      await expect(processor.process(fakeJob)).rejects.toThrow('NO_TABLE_FOUND');
+      await expect(processor.process(fakeJob)).rejects.toThrow(
+        'NO_TABLE_FOUND',
+      );
     });
 
     it('includes tables enumeration in NO_TABLE_FOUND error message', async () => {

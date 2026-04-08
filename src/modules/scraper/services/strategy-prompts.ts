@@ -4,7 +4,10 @@
  * The real stock data (technicals, fundamentals, news) is injected separately.
  */
 
-export const STRATEGY_PROMPTS: Record<string, { name: string; systemPrompt: string }> = {
+export const STRATEGY_PROMPTS: Record<
+  string,
+  { name: string; systemPrompt: string }
+> = {
   'goldman-screener': {
     name: 'Goldman Sachs Stock Screener',
     systemPrompt: `You are a senior equity analyst at Goldman Sachs with 20 years of experience.

@@ -22,6 +22,7 @@ model User {
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   investmentHorizon InvestmentHorizon? @default(MID_TERM) @map("investment_horizon")
+  tradingMode       TradingMode        @default(STOCKS) @map("trading_mode")
 
   transactions  Transaction[]
   positions     Position[]
@@ -35,6 +36,7 @@ model Transaction {
   userId    String          @map("user_id")
   symbol    String
   type      TransactionType
+  assetType AssetType       @default(STOCK) @map("asset_type")
   quantity  Decimal         @db.Decimal(18, 8)
   price     Decimal         @db.Decimal(18, 8)
   fees      Decimal         @default(0) @db.Decimal(18, 8)
@@ -52,6 +54,7 @@ model Position {
   id            String    @id @default(uuid())
   userId        String    @map("user_id")
   symbol        String
+  assetType     AssetType @default(STOCK) @map("asset_type")
   totalQuantity Decimal   @default(0) @map("total_quantity") @db.Decimal(18, 8)
   averagePrice  Decimal   @default(0) @map("average_price") @db.Decimal(18, 8)
   totalInvested Decimal   @default(0) @map("total_invested") @db.Decimal(18, 8)
@@ -67,6 +70,7 @@ model RealizedGain {
   id        String    @id @default(uuid())
   userId    String    @map("user_id")
   symbol    String
+  assetType AssetType @default(STOCK) @map("asset_type")
   quantity  Decimal   @db.Decimal(18, 8)
   sellPrice Decimal   @map("sell_price") @db.Decimal(18, 8)
   avgPrice  Decimal   @map("avg_price") @db.Decimal(18, 8)
@@ -117,4 +121,43 @@ enum InvestmentHorizon {
   SPECULATION
   MID_TERM
   LONG_TERM
+}
+
+model GoldCategory {
+  id        String   @id // e.g., "GOLD_24K", "GOLD_21K"
+  nameAr    String   @map("name_ar")
+  nameEn    String   @map("name_en")
+  unit      String   // "gram", "ounce", "piece"
+  purity    Decimal? @db.Decimal(5, 4) // e.g., 0.9999, 0.8750
+  weightGrams Decimal? @map("weight_grams") @db.Decimal(10, 4) // fixed weight for gold pound/bar
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  priceHistory GoldPriceHistory[]
+
+  @@map("gold_categories")
+}
+
+model GoldPriceHistory {
+  id            BigInt   @default(autoincrement())
+  categoryId    String   @map("category_id")
+  buyPrice      Decimal  @map("buy_price") @db.Decimal(18, 4)
+  sellPrice     Decimal  @map("sell_price") @db.Decimal(18, 4)
+  globalSpotUsd Decimal? @map("global_spot_usd") @db.Decimal(18, 4)
+  timestamp     DateTime @default(now())
+
+  category GoldCategory @relation(fields: [categoryId], references: [id])
+
+  @@id([id, timestamp])
+  @@index([categoryId, timestamp])
+  @@map("gold_price_history")
+}
+
+enum TradingMode {
+  STOCKS
+  GOLD
+}
+
+enum AssetType {
+  STOCK
+  GOLD
 }

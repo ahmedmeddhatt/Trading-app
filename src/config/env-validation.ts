@@ -8,7 +8,10 @@ export function validateRedisEnv(): void {
     return;
   }
 
-  const host = redisUrl.split('@')[1]?.split(':')[0] ?? redisUrl.split('//')[1]?.split(':')[0] ?? 'unknown';
+  const host =
+    redisUrl.split('@')[1]?.split(':')[0] ??
+    redisUrl.split('//')[1]?.split(':')[0] ??
+    'unknown';
   console.log('Redis env validation: PASS');
   console.log(`  REDIS_URL: ${host}`);
 }

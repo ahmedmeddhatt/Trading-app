@@ -14,8 +14,11 @@ export class AppleStrategy extends PassportStrategy(Strategy, 'apple') {
       clientID: config.get<string>('APPLE_CLIENT_ID') || 'NOT_SET',
       teamID: config.get<string>('APPLE_TEAM_ID') || 'NOT_SET',
       keyID: config.get<string>('APPLE_KEY_ID') || 'NOT_SET',
-      privateKeyLocation: config.get<string>('APPLE_PRIVATE_KEY_PATH') || './secrets/AuthKey.p8',
-      callbackURL: config.get<string>('APPLE_CALLBACK_URL') || 'http://localhost:3000/auth/apple/callback',
+      privateKeyLocation:
+        config.get<string>('APPLE_PRIVATE_KEY_PATH') || './secrets/AuthKey.p8',
+      callbackURL:
+        config.get<string>('APPLE_CALLBACK_URL') ||
+        'http://localhost:3000/auth/apple/callback',
       passReqToCallback: false,
     });
   }

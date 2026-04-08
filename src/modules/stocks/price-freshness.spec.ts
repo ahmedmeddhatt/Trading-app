@@ -4,7 +4,7 @@
  * No external dependencies — pure function testing.
  */
 
-const FRESH_THRESHOLD_MS = 5 * 60 * 1000;  // 5 min
+const FRESH_THRESHOLD_MS = 5 * 60 * 1000; // 5 min
 
 interface LivePrice {
   price: number;
@@ -37,7 +37,10 @@ function classifyPrices(
     totalSymbols: totalDbSymbols,
     symbolsWithFreshPrice,
     symbolsWithStalePrice,
-    symbolsWithNoPrice: Math.max(0, totalDbSymbols - symbolsWithFreshPrice - symbolsWithStalePrice),
+    symbolsWithNoPrice: Math.max(
+      0,
+      totalDbSymbols - symbolsWithFreshPrice - symbolsWithStalePrice,
+    ),
     oldestUpdate: oldestUpdate?.toISOString() ?? null,
     newestUpdate: newestUpdate?.toISOString() ?? null,
   };
@@ -55,7 +58,9 @@ function lp(ageMs: number, nowMs: number, price = 50): LivePrice {
 describe('Price freshness classification', () => {
   let now: number;
 
-  beforeEach(() => { now = Date.now(); });
+  beforeEach(() => {
+    now = Date.now();
+  });
 
   it('symbol updated 3 min ago → fresh', () => {
     const meta = classifyPrices({ COMI: lp(3 * 60 * 1000, now) }, 1, now);
@@ -84,8 +89,8 @@ describe('Price freshness classification', () => {
 
   it('newestUpdate = max of all lastUpdate values', () => {
     const prices = {
-      COMI: lp(2 * 60 * 1000, now),   // 2 min ago → newer
-      HRHO: lp(8 * 60 * 1000, now),   // 8 min ago → older
+      COMI: lp(2 * 60 * 1000, now), // 2 min ago → newer
+      HRHO: lp(8 * 60 * 1000, now), // 8 min ago → older
     };
     const meta = classifyPrices(prices, 2, now);
     const newest = new Date(meta.newestUpdate!).getTime();
@@ -112,7 +117,11 @@ describe('Price freshness classification', () => {
   });
 
   it('1ms over boundary → counts as stale', () => {
-    const meta = classifyPrices({ COMI: lp(FRESH_THRESHOLD_MS + 1, now) }, 1, now);
+    const meta = classifyPrices(
+      { COMI: lp(FRESH_THRESHOLD_MS + 1, now) },
+      1,
+      now,
+    );
     expect(meta.symbolsWithStalePrice).toBe(1);
   });
 

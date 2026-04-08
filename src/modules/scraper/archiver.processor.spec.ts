@@ -46,8 +46,10 @@ describe('ArchiverProcessor', () => {
     }).compile();
 
     processor = module.get(ArchiverProcessor);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    loggerErrorSpy = jest.spyOn((processor as any).logger, 'error').mockImplementation(() => {});
+
+    loggerErrorSpy = jest
+      .spyOn((processor as any).logger, 'error')
+      .mockImplementation(() => {});
   });
 
   afterEach(() => {

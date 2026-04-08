@@ -34,6 +34,7 @@ const testUser = {
   createdAt: new Date(),
   updatedAt: new Date(),
   investmentHorizon: null,
+  tradingMode: 'STOCKS' as const,
 };
 
 describe('AuthService', () => {
@@ -59,13 +60,20 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null); // email not taken
       mockPrisma.user.create.mockResolvedValue(testUser);
 
-      await service.register({ email: 'new@example.com', name: 'New', password: 'password123' });
+      await service.register({
+        email: 'new@example.com',
+        name: 'New',
+        password: 'password123',
+      });
 
       const createCall = mockPrisma.user.create.mock.calls[0][0].data;
       expect(createCall.passwordHash).toBeDefined();
       expect(createCall.passwordHash).not.toBe('password123');
       // Verify it's a real bcrypt hash
-      const valid = await bcrypt.compare('password123', createCall.passwordHash);
+      const valid = await bcrypt.compare(
+        'password123',
+        createCall.passwordHash,
+      );
       expect(valid).toBe(true);
     });
 
@@ -73,14 +81,20 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(testUser); // email already taken
 
       await expect(
-        service.register({ email: 'test@example.com', name: 'Dup', password: 'password123' }),
+        service.register({
+          email: 'test@example.com',
+          name: 'Dup',
+          password: 'password123',
+        }),
       ).rejects.toThrow(ConflictException);
     });
 
     it('does not call user.create when email already exists', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(testUser);
 
-      await service.register({ email: 'test@example.com', name: 'X', password: 'pass' }).catch(() => {});
+      await service
+        .register({ email: 'test@example.com', name: 'X', password: 'pass' })
+        .catch(() => {});
 
       expect(mockPrisma.user.create).not.toHaveBeenCalled();
     });
@@ -89,7 +103,11 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.user.create.mockResolvedValue(testUser);
 
-      const result = await service.register({ email: 'new@example.com', name: 'New', password: 'password123' });
+      const result = await service.register({
+        email: 'new@example.com',
+        name: 'New',
+        password: 'password123',
+      });
       expect(result.id).toBe(testUser.id);
       expect(result.email).toBe(testUser.email);
     });
@@ -100,15 +118,24 @@ describe('AuthService', () => {
   describe('login', () => {
     it('returns user on valid credentials', async () => {
       const realHash = await bcrypt.hash('correctpass', 10);
-      mockPrisma.user.findUnique.mockResolvedValue({ ...testUser, passwordHash: realHash });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        ...testUser,
+        passwordHash: realHash,
+      });
 
-      const result = await service.login({ email: 'test@example.com', password: 'correctpass' });
+      const result = await service.login({
+        email: 'test@example.com',
+        password: 'correctpass',
+      });
       expect(result.id).toBe(testUser.id);
     });
 
     it('throws UnauthorizedException on wrong password', async () => {
       const realHash = await bcrypt.hash('correctpass', 10);
-      mockPrisma.user.findUnique.mockResolvedValue({ ...testUser, passwordHash: realHash });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        ...testUser,
+        passwordHash: realHash,
+      });
 
       await expect(
         service.login({ email: 'test@example.com', password: 'wrongpass' }),
@@ -124,7 +151,10 @@ describe('AuthService', () => {
     });
 
     it('throws UnauthorizedException when user has no passwordHash (OAuth user)', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ ...testUser, passwordHash: null });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        ...testUser,
+        passwordHash: null,
+      });
 
       await expect(
         service.login({ email: 'oauth@example.com', password: 'any' }),
