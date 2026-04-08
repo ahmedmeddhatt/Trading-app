@@ -25,13 +25,6 @@ export class ArchiverProcessor extends WorkerHost {
       return;
     }
 
-    const today = new Date();
-    const nextMonth = new Date(today);
-    nextMonth.setUTCDate(today.getUTCDate() + 30);
-
-    await this.priceHistory.ensurePartitionExists(today);
-    await this.priceHistory.ensurePartitionExists(nextMonth);
-
     this.logger.log('Running price snapshot archival...');
     await this.priceHistory.createDailySnapshot();
   }

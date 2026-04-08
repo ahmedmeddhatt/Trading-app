@@ -46,17 +46,6 @@ export class SchedulerService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    // Ensure DB partitions exist for the current and next month on startup
-    const today = new Date();
-    const nextMonth = new Date(today);
-    nextMonth.setUTCDate(today.getUTCDate() + 30);
-    void this.priceHistory.ensurePartitionExists(today).catch((e) =>
-      this.logger.error(`startup partition init failed: ${(e as Error).message}`)
-    );
-    void this.priceHistory.ensurePartitionExists(nextMonth).catch((e) =>
-      this.logger.error(`startup partition init failed: ${(e as Error).message}`)
-    );
-
     // Start all loops
     void this.runPriceLoop();
     void this.runListScrape();
@@ -212,12 +201,6 @@ export class SchedulerService implements OnModuleInit {
     if (this.lastArchiveDate === todayStr) return;
 
     try {
-      const today = new Date();
-      const nextMonth = new Date(today);
-      nextMonth.setUTCDate(today.getUTCDate() + 30);
-      await this.priceHistory.ensurePartitionExists(today);
-      await this.priceHistory.ensurePartitionExists(nextMonth);
-
       const count = await this.priceHistory.createDailySnapshot();
       this.lastArchiveDate = todayStr;
       this.logger.log(`archiver: daily snapshot created (${count} records)`);

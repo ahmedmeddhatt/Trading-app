@@ -13,8 +13,14 @@ export class PortfolioController {
 
   @Get(':userId/analytics')
   @UseGuards(JwtAuthGuard)
-  getAnalytics(@Param('userId') userId: string) {
-    return this.portfolioService.getAnalytics(userId);
+  getAnalytics(
+    @Param('userId') userId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    return this.portfolioService.getAnalytics(userId, fromDate, toDate);
   }
 
   @Get(':userId/transactions')
@@ -49,8 +55,14 @@ export class PortfolioController {
 
   @Get(':userId/risk')
   @UseGuards(JwtAuthGuard)
-  getRiskAnalytics(@Param('userId') userId: string) {
-    return this.portfolioService.getRiskAnalytics(userId);
+  getRiskAnalytics(
+    @Param('userId') userId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    return this.portfolioService.getRiskAnalytics(userId, fromDate, toDate);
   }
 
   @Get(':userId/pnl-calendar')
@@ -103,13 +115,25 @@ export class PortfolioController {
 
   @Get(':userId/closed-positions')
   @UseGuards(JwtAuthGuard)
-  getClosedPositions(@Param('userId') userId: string) {
-    return this.portfolioService.getClosedPositions(userId);
+  getClosedPositions(
+    @Param('userId') userId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    return this.portfolioService.getClosedPositions(userId, fromDate, toDate);
   }
 
   @Get(':userId/realized-gains')
   @UseGuards(JwtAuthGuard)
-  getRealizedGainsList(@Param('userId') userId: string) {
-    return this.portfolioService.getRealizedGainsList(userId);
+  getRealizedGainsList(
+    @Param('userId') userId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+    return this.portfolioService.getRealizedGainsList(userId, fromDate, toDate);
   }
 }

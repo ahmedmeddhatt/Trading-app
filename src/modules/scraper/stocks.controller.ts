@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, NotFoundException, Param, Query, BadRequestException } from '@nestjs/common';
 import { StockStoreService } from './stock-store.service';
 import { RedisWriterService } from './redis-writer.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -14,6 +14,24 @@ export class StocksController {
     private readonly technicalAnalysis: TechnicalAnalysisService,
     private readonly geminiAnalysis: GeminiAnalysisService,
   ) {}
+
+  @Post('strategy-analysis')
+  async strategyAnalysis(
+    @Body() body: { strategyId: string; symbols: string[]; horizon?: string },
+  ) {
+    if (!body.strategyId || !body.symbols?.length) {
+      throw new BadRequestException('strategyId and symbols are required');
+    }
+    if (body.symbols.length > 10) {
+      throw new BadRequestException('Maximum 10 symbols per request');
+    }
+    const validHorizons = ['SPECULATION', 'MID_TERM', 'LONG_TERM'] as const;
+    const horizon = validHorizons.includes(body.horizon as any)
+      ? (body.horizon as 'SPECULATION' | 'MID_TERM' | 'LONG_TERM')
+      : 'MID_TERM';
+    const results = await this.geminiAnalysis.analyzeStrategy(body.strategyId, body.symbols, horizon);
+    return { results };
+  }
 
   @Get('dashboard')
   async dashboard() {

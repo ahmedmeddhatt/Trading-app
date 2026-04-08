@@ -9,7 +9,6 @@ import { PriceHistoryService } from './price-history.service';
 import { RedisWriterService } from './redis-writer.service';
 
 const mockPriceHistory = {
-  ensurePartitionExists: jest.fn().mockResolvedValue(undefined),
   createDailySnapshot: jest.fn().mockResolvedValue(undefined),
 };
 
@@ -119,21 +118,7 @@ describe('ArchiverProcessor', () => {
 
       await processor.process(fakeJob);
 
-      expect(mockPriceHistory.ensurePartitionExists).toHaveBeenCalledTimes(2);
       expect(mockPriceHistory.createDailySnapshot).toHaveBeenCalledTimes(1);
-    });
-
-    it('calls ensurePartitionExists for today and today+30d', async () => {
-      mockRedisWriter.hgetall.mockResolvedValue(makeRawPrices(0));
-      jest.spyOn(processor as any, 'isMarketHours').mockReturnValue(true);
-
-      await processor.process(fakeJob);
-
-      const dates: Date[] = mockPriceHistory.ensurePartitionExists.mock.calls.map((c: any[]) => c[0]);
-      expect(dates).toHaveLength(2);
-      const diffMs = dates[1].getTime() - dates[0].getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-      expect(diffDays).toBeCloseTo(30, 0);
     });
   });
 });

@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { RedisWriterService } from './redis-writer.service';
 
@@ -92,20 +91,4 @@ export class PriceHistoryService {
     });
   }
 
-  async ensurePartitionExists(date: Date): Promise<void> {
-    const year = date.getUTCFullYear();
-    const month = date.getUTCMonth() + 1; // 1-based
-    const table = `stock_price_history_y${year}_m${String(month).padStart(2, '0')}`;
-    const start = new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
-    const end = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
-
-    this.logger.log(
-      `Ensuring partition exists for ${date.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`,
-      { table },
-    );
-
-    await this.prisma.$executeRaw(
-      Prisma.sql`CREATE TABLE IF NOT EXISTS ${Prisma.raw(`"${table}"`)} PARTITION OF "stock_price_history" FOR VALUES FROM (${start}::timestamptz) TO (${end}::timestamptz)`,
-    );
-  }
 }

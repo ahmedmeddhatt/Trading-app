@@ -27,25 +27,41 @@ export class PortfolioService {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  private parseLivePrice(rawPrices: Record<string, string>, symbol: string): Decimal | null {
+  private parseLivePrice(
+    rawPrices: Record<string, string>,
+    symbol: string,
+  ): Decimal | null {
     try {
       const parsed = rawPrices?.[symbol] ? JSON.parse(rawPrices[symbol]) : null;
       return parsed?.price != null ? new Decimal(parsed.price) : null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
-  private parseLivePriceFull(rawPrices: Record<string, string>, symbol: string) {
+  private parseLivePriceFull(
+    rawPrices: Record<string, string>,
+    symbol: string,
+  ) {
     try {
       const parsed = rawPrices?.[symbol] ? JSON.parse(rawPrices[symbol]) : null;
-      return { price: parsed?.price ?? null, lastPriceUpdate: parsed?.timestamp ?? null };
-    } catch { return { price: null, lastPriceUpdate: null }; }
+      return {
+        price: parsed?.price ?? null,
+        lastPriceUpdate: parsed?.timestamp ?? null,
+      };
+    } catch {
+      return { price: null, lastPriceUpdate: null };
+    }
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────
 
   async getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
     const positions = await this.positionsService.findByUser(userId);
-    const totalInvested = positions.reduce((sum, pos) => sum.add(pos.totalInvested), new Decimal(0));
+    const totalInvested = positions.reduce(
+      (sum, pos) => sum.add(pos.totalInvested),
+      new Decimal(0),
+    );
     return {
       userId,
       totalInvested: totalInvested.toFixed(2),
@@ -61,18 +77,51 @@ export class PortfolioService {
 
   // ── Analytics (enhanced) ──────────────────────────────────────────────────
 
-  async getAnalytics(userId: string) {
-    const [positions, realizedGains, rawPrices, txGroups] = await Promise.all([
-      this.positionsService.findByUser(userId),
-      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null } }),
-      this.redis.hgetall('market:prices'),
-      (this.prisma.transaction as any).groupBy({
-        by: ['symbol'],
-        where: { userId },
-        _sum: { fees: true },
-        _min: { createdAt: true },
-      }) as Promise<{ symbol: string; _sum: { fees: Decimal | null }; _min: { createdAt: Date | null } }[]>,
-    ]);
+  async getAnalytics(userId: string, fromDate?: Date, toDate?: Date) {
+    const dateFilter =
+      fromDate || toDate
+        ? {
+            ...(fromDate ? { gte: fromDate } : {}),
+            ...(toDate ? { lte: toDate } : {}),
+          }
+        : undefined;
+
+    const [positions, realizedGains, rawPrices, txGroups, allTransactions] =
+      await Promise.all([
+        this.positionsService.findByUser(userId),
+        this.prisma.realizedGain.findMany({
+          where: {
+            userId,
+            deletedAt: null,
+            ...(dateFilter ? { createdAt: dateFilter } : {}),
+          },
+        }),
+        this.redis.hgetall('market:prices'),
+        (this.prisma.transaction as any).groupBy({
+          by: ['symbol'],
+          where: { userId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+          _sum: { fees: true },
+          _min: { createdAt: true },
+        }) as Promise<
+          {
+            symbol: string;
+            _sum: { fees: Decimal | null };
+            _min: { createdAt: Date | null };
+          }[]
+        >,
+        this.prisma.transaction.findMany({
+          where: { userId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            symbol: true,
+            type: true,
+            quantity: true,
+            price: true,
+            fees: true,
+            createdAt: true,
+          },
+        }),
+      ]);
 
     const feesBySymbol: Record<string, string> = {};
     const firstBuyBySymbol: Record<string, Date> = {};
@@ -83,21 +132,35 @@ export class PortfolioService {
 
     const realizedBySymbol: Record<string, Decimal> = {};
     for (const g of realizedGains) {
-      realizedBySymbol[g.symbol] = (realizedBySymbol[g.symbol] ?? new Decimal(0)).add(g.profit);
+      realizedBySymbol[g.symbol] = (
+        realizedBySymbol[g.symbol] ?? new Decimal(0)
+      ).add(g.profit);
     }
 
+    // Collect ALL symbols that ever had transactions (for historical reconstruction)
+    const allSymbols = [...new Set(allTransactions.map((t) => t.symbol))];
     const symbols = positions.map((p) => p.symbol);
-    const history = symbols.length
+    const historySymbols =
+      allSymbols.length > symbols.length ? allSymbols : symbols;
+    const history = historySymbols.length
       ? await this.prisma.stockPriceHistory.findMany({
-          where: { symbol: { in: symbols } },
+          where: {
+            symbol: { in: historySymbols },
+          },
           orderBy: { timestamp: 'asc' },
           select: { symbol: true, price: true, timestamp: true },
         })
       : [];
 
-    const historyBySymbol: Record<string, { price: string; timestamp: Date }[]> = {};
+    const historyBySymbol: Record<
+      string,
+      { price: string; timestamp: Date }[]
+    > = {};
     for (const h of history) {
-      (historyBySymbol[h.symbol] ??= []).push({ price: h.price.toString(), timestamp: h.timestamp });
+      (historyBySymbol[h.symbol] ??= []).push({
+        price: h.price.toString(),
+        timestamp: h.timestamp,
+      });
     }
 
     let totalInvested = new Decimal(0);
@@ -111,29 +174,44 @@ export class PortfolioService {
     );
 
     type PosData = {
-      symbol: string; totalQuantity: string; averagePrice: string; totalInvested: string;
-      currentPrice: number | null; lastPriceUpdate: string | null;
-      unrealizedPnL: string | null; unrealizedRaw: Decimal | null;
-      realizedPnL: string; graphData: { price: string; timestamp: Date }[];
-      returnPercent: number | null; marketValue: Decimal;
-      daysSinceFirstBuy: number | null; totalFeesPaid: string;
-      breakEvenPrice: string; portfolioContributionPct: string;
+      symbol: string;
+      totalQuantity: string;
+      averagePrice: string;
+      totalInvested: string;
+      currentPrice: number | null;
+      lastPriceUpdate: string | null;
+      unrealizedPnL: string | null;
+      unrealizedRaw: Decimal | null;
+      realizedPnL: string;
+      graphData: { price: string; timestamp: Date }[];
+      returnPercent: number | null;
+      marketValue: Decimal;
+      daysSinceFirstBuy: number | null;
+      totalFeesPaid: string;
+      breakEvenPrice: string;
+      portfolioContributionPct: string;
     };
 
     // Only include positions with a meaningful quantity (exclude fully sold)
-    const activePositions = positions.filter((p) => new Decimal(p.totalQuantity.toString()).gt(0));
+    const activePositions = positions.filter((p) =>
+      new Decimal(p.totalQuantity.toString()).gt(0),
+    );
 
     const positionData: PosData[] = activePositions.map((pos) => {
       const qty = new Decimal(pos.totalQuantity.toString());
       const avgPx = new Decimal(pos.averagePrice.toString());
       const invested = new Decimal(pos.totalInvested.toString());
-      const { price, lastPriceUpdate } = this.parseLivePriceFull(rawPrices, pos.symbol);
+      const { price, lastPriceUpdate } = this.parseLivePriceFull(
+        rawPrices,
+        pos.symbol,
+      );
       const currPx = price != null ? new Decimal(price) : null;
       const unrealizedRaw = currPx ? currPx.sub(avgPx).mul(qty) : null;
       const realized = realizedBySymbol[pos.symbol] ?? new Decimal(0);
-      const returnPercent = invested.isZero() || !unrealizedRaw
-        ? null
-        : unrealizedRaw.div(invested).mul(100).toNumber();
+      const returnPercent =
+        invested.isZero() || !unrealizedRaw
+          ? null
+          : unrealizedRaw.div(invested).mul(100).toNumber();
       const marketValue = currPx ? currPx.mul(qty) : invested;
 
       const firstBuy = firstBuyBySymbol[pos.symbol];
@@ -174,10 +252,14 @@ export class PortfolioService {
 
     const withUnrealized = positionData.filter((p) => p.unrealizedRaw != null);
     let best = withUnrealized.length
-      ? withUnrealized.reduce((a, b) => (a.unrealizedRaw!.gt(b.unrealizedRaw!) ? a : b))
+      ? withUnrealized.reduce((a, b) =>
+          a.unrealizedRaw!.gt(b.unrealizedRaw!) ? a : b,
+        )
       : null;
     let worst = withUnrealized.length
-      ? withUnrealized.reduce((a, b) => (a.unrealizedRaw!.lt(b.unrealizedRaw!) ? a : b))
+      ? withUnrealized.reduce((a, b) =>
+          a.unrealizedRaw!.lt(b.unrealizedRaw!) ? a : b,
+        )
       : null;
 
     // If only one position, show it in the relevant card only
@@ -191,7 +273,12 @@ export class PortfolioService {
 
     // Win rate = total realized profit / total capital ever invested from account start
     const closedCostBasis = realizedGains.reduce(
-      (sum, g) => sum.add(new Decimal(g.quantity.toString()).mul(new Decimal(g.avgPrice.toString()))),
+      (sum, g) =>
+        sum.add(
+          new Decimal(g.quantity.toString()).mul(
+            new Decimal(g.avgPrice.toString()),
+          ),
+        ),
       new Decimal(0),
     );
     const totalEverInvested = totalInvested.add(closedCostBasis);
@@ -204,7 +291,10 @@ export class PortfolioService {
       ? null
       : totalPnL.div(totalInvested).mul(100).toFixed(2);
 
-    const cleanPositions = positionData.map(({ unrealizedRaw: _r, marketValue: _mv, returnPercent: _rp, ...rest }) => rest);
+    const cleanPositions = positionData.map(
+      ({ unrealizedRaw: _r, marketValue: _mv, returnPercent: _rp, ...rest }) =>
+        rest,
+    );
 
     return {
       positions: cleanPositions,
@@ -213,52 +303,104 @@ export class PortfolioService {
         totalRealized: totalRealized.toFixed(2),
         totalUnrealized: totalUnrealized.toFixed(2),
         totalPnL: totalPnL.toFixed(2),
-        totalPortfolioReturn: totalPortfolioReturn ? `${totalPortfolioReturn}%` : null,
+        totalPortfolioReturn: totalPortfolioReturn
+          ? `${totalPortfolioReturn}%`
+          : null,
       },
       bestPerformer: best
-        ? { symbol: best.symbol, unrealizedPnL: best.unrealizedPnL, returnPercent: best.returnPercent }
+        ? {
+            symbol: best.symbol,
+            unrealizedPnL: best.unrealizedPnL,
+            returnPercent: best.returnPercent,
+          }
         : null,
       worstPerformer: worst
-        ? { symbol: worst.symbol, unrealizedPnL: worst.unrealizedPnL, returnPercent: worst.returnPercent }
+        ? {
+            symbol: worst.symbol,
+            unrealizedPnL: worst.unrealizedPnL,
+            returnPercent: worst.returnPercent,
+          }
         : null,
       winRate: winRate ? `${winRate}%` : null,
+      // All transactions for client-side position reconstruction
+      transactions: allTransactions.map((t) => ({
+        symbol: t.symbol,
+        type: t.type,
+        quantity: t.quantity.toString(),
+        price: t.price.toString(),
+        fees: t.fees.toString(),
+        date: t.createdAt.toISOString(),
+      })),
+      // All price history for historical price lookups
+      priceHistory: Object.fromEntries(
+        Object.entries(
+          history.reduce(
+            (acc, h) => {
+              (acc[h.symbol] ??= []).push({
+                price: h.price.toString(),
+                timestamp: h.timestamp.toISOString(),
+              });
+              return acc;
+            },
+            {} as Record<string, { price: string; timestamp: string }[]>,
+          ),
+        ),
+      ),
     };
   }
 
   // ── Transaction Detail (Feature 1) ────────────────────────────────────────
 
   async getTransactionDetail(userId: string, txId: string) {
-    const tx = await this.prisma.transaction.findFirst({ where: { id: txId, userId, deletedAt: null } });
+    const tx = await this.prisma.transaction.findFirst({
+      where: { id: txId, userId, deletedAt: null },
+    });
     if (!tx) throw new NotFoundException('Transaction not found');
 
-    const [priceAtTradeRow, allSymbolTxns, position, realizedGains, rawPrices] = await Promise.all([
-      this.prisma.stockPriceHistory.findFirst({
-        where: { symbol: tx.symbol, timestamp: { lte: tx.createdAt } },
-        orderBy: { timestamp: 'desc' },
-        select: { price: true, timestamp: true },
-      }),
-      this.prisma.transaction.findMany({
-        where: { userId, symbol: tx.symbol, deletedAt: null },
-        orderBy: { createdAt: 'asc' },
-      }),
-      this.prisma.position.findFirst({ where: { userId, symbol: tx.symbol, deletedAt: null } }),
-      this.prisma.realizedGain.findMany({ where: { userId, symbol: tx.symbol, deletedAt: null } }),
-      this.redis.hgetall('market:prices'),
-    ]);
+    const [priceAtTradeRow, allSymbolTxns, position, realizedGains, rawPrices] =
+      await Promise.all([
+        this.prisma.stockPriceHistory.findFirst({
+          where: { symbol: tx.symbol, timestamp: { lte: tx.createdAt } },
+          orderBy: { timestamp: 'desc' },
+          select: { price: true, timestamp: true },
+        }),
+        this.prisma.transaction.findMany({
+          where: { userId, symbol: tx.symbol, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.prisma.position.findFirst({
+          where: { userId, symbol: tx.symbol, deletedAt: null },
+        }),
+        this.prisma.realizedGain.findMany({
+          where: { userId, symbol: tx.symbol, deletedAt: null },
+        }),
+        this.redis.hgetall('market:prices'),
+      ]);
 
-    const { price: currentPrice } = this.parseLivePriceFull(rawPrices, tx.symbol);
+    const { price: currentPrice } = this.parseLivePriceFull(
+      rawPrices,
+      tx.symbol,
+    );
 
     // costBasis.beforeTrade: replay BUYs before this tx
-    let prevQty = new Decimal(0), prevInv = new Decimal(0);
+    let prevQty = new Decimal(0),
+      prevInv = new Decimal(0);
     for (const t of allSymbolTxns) {
       if (t.id === tx.id) break;
       if (t.type === TransactionType.BUY) {
-        const cost = new Decimal(t.quantity.toString()).mul(t.price.toString()).add((t as any).fees?.toString() ?? '0');
+        const cost = new Decimal(t.quantity.toString())
+          .mul(t.price.toString())
+          .add((t as any).fees?.toString() ?? '0');
         prevQty = prevQty.add(t.quantity.toString());
         prevInv = prevInv.add(cost);
       } else {
         prevQty = prevQty.sub(t.quantity.toString());
-        if (!prevQty.isZero()) prevInv = prevQty.mul(prevInv.isZero() ? new Decimal(0) : prevInv.div(prevQty.add(t.quantity.toString())));
+        if (!prevQty.isZero())
+          prevInv = prevQty.mul(
+            prevInv.isZero()
+              ? new Decimal(0)
+              : prevInv.div(prevQty.add(t.quantity.toString())),
+          );
         else prevInv = new Decimal(0);
       }
     }
@@ -273,15 +415,23 @@ export class PortfolioService {
       where: { userId, symbol: tx.symbol },
       _sum: { fees: true },
     });
-    const totalFeesForSymbol = new Decimal(allFeesAgg._sum.fees?.toString() ?? '0').toFixed(2);
+    const totalFeesForSymbol = new Decimal(
+      allFeesAgg._sum.fees?.toString() ?? '0',
+    ).toFixed(2);
 
     // realizedImpact for SELL
-    let realizedImpact: null | { profit: string; avgPriceAtSell: string; sellPrice: string; returnPercent: string } = null;
+    let realizedImpact: null | {
+      profit: string;
+      avgPriceAtSell: string;
+      sellPrice: string;
+      returnPercent: string;
+    } = null;
     if (tx.type === TransactionType.SELL) {
       const matched = realizedGains.find(
-        (g) => new Decimal(g.quantity.toString()).eq(qty) &&
-               new Decimal(g.sellPrice.toString()).eq(px) &&
-               Math.abs(g.createdAt.getTime() - tx.createdAt.getTime()) < 10000,
+        (g) =>
+          new Decimal(g.quantity.toString()).eq(qty) &&
+          new Decimal(g.sellPrice.toString()).eq(px) &&
+          Math.abs(g.createdAt.getTime() - tx.createdAt.getTime()) < 10000,
       );
       if (matched) {
         const entryPx = new Decimal(matched.avgPrice.toString());
@@ -295,16 +445,23 @@ export class PortfolioService {
       }
     }
 
-    const priceAtTrade = priceAtTradeRow ? parseFloat(priceAtTradeRow.price.toString()) : null;
-    const priceChangeSince = priceAtTrade != null && currentPrice != null
-      ? (((currentPrice - priceAtTrade) / priceAtTrade) * 100).toFixed(2)
+    const priceAtTrade = priceAtTradeRow
+      ? parseFloat(priceAtTradeRow.price.toString())
       : null;
+    const priceChangeSince =
+      priceAtTrade != null && currentPrice != null
+        ? (((currentPrice - priceAtTrade) / priceAtTrade) * 100).toFixed(2)
+        : null;
 
     return {
       transaction: {
-        id: tx.id, symbol: tx.symbol, type: tx.type,
-        quantity: qty.toString(), price: px.toFixed(2),
-        fees: fees.toFixed(2), total: tradeTotal.toFixed(2),
+        id: tx.id,
+        symbol: tx.symbol,
+        type: tx.type,
+        quantity: qty.toString(),
+        price: px.toFixed(2),
+        fees: fees.toFixed(2),
+        total: tradeTotal.toFixed(2),
         createdAt: tx.createdAt,
       },
       priceContext: {
@@ -314,28 +471,43 @@ export class PortfolioService {
         priceChangeSinceTrade: priceChangeSince,
       },
       costBasis: {
-        beforeTrade: prevQty.isZero() ? null : {
-          avgPrice: prevInv.isZero() ? '0.00' : prevInv.div(prevQty).toFixed(2),
-          totalQuantity: prevQty.toString(),
-          totalInvested: prevInv.toFixed(2),
-        },
-        afterTrade: position ? {
-          avgPrice: new Decimal(position.averagePrice.toString()).toFixed(2),
-          totalQuantity: position.totalQuantity.toString(),
-          totalInvested: new Decimal(position.totalInvested.toString()).toFixed(2),
-        } : null,
+        beforeTrade: prevQty.isZero()
+          ? null
+          : {
+              avgPrice: prevInv.isZero()
+                ? '0.00'
+                : prevInv.div(prevQty).toFixed(2),
+              totalQuantity: prevQty.toString(),
+              totalInvested: prevInv.toFixed(2),
+            },
+        afterTrade: position
+          ? {
+              avgPrice: new Decimal(position.averagePrice.toString()).toFixed(
+                2,
+              ),
+              totalQuantity: position.totalQuantity.toString(),
+              totalInvested: new Decimal(
+                position.totalInvested.toString(),
+              ).toFixed(2),
+            }
+          : null,
       },
       feeImpact: {
         feesThisTrade: fees.toFixed(2),
         totalFeesForSymbol,
-        feeAsPercentOfTrade: tradeTotal.isZero() ? '0.00' : fees.div(tradeTotal).mul(100).toFixed(4),
+        feeAsPercentOfTrade: tradeTotal.isZero()
+          ? '0.00'
+          : fees.div(tradeTotal).mul(100).toFixed(4),
       },
       symbolTimeline: allSymbolTxns.map((t) => ({
-        id: t.id, type: t.type,
+        id: t.id,
+        type: t.type,
         quantity: t.quantity.toString(),
         price: new Decimal(t.price.toString()).toFixed(2),
         fees: new Decimal((t as any).fees?.toString() ?? '0').toFixed(2),
-        total: new Decimal(t.quantity.toString()).mul(t.price.toString()).toFixed(2),
+        total: new Decimal(t.quantity.toString())
+          .mul(t.price.toString())
+          .toFixed(2),
         createdAt: t.createdAt,
         isCurrentTrade: t.id === tx.id,
       })),
@@ -346,21 +518,31 @@ export class PortfolioService {
   // ── Position Detail (Feature 2) ───────────────────────────────────────────
 
   async getPositionDetail(userId: string, symbol: string) {
-    const [position, txns, realizedGains, priceHistory, rawPrices] = await Promise.all([
-      this.prisma.position.findFirst({ where: { userId, symbol, deletedAt: null } }),
-      this.prisma.transaction.findMany({ where: { userId, symbol, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
-      this.prisma.realizedGain.findMany({ where: { userId, symbol, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
-      this.prisma.stockPriceHistory.findMany({
-        where: { symbol },
-        orderBy: { timestamp: 'asc' },
-        select: { price: true, timestamp: true },
-        take: 500,
-      }),
-      this.redis.hgetall('market:prices'),
-    ]);
+    const [position, txns, realizedGains, priceHistory, rawPrices] =
+      await Promise.all([
+        this.prisma.position.findFirst({
+          where: { userId, symbol, deletedAt: null },
+        }),
+        this.prisma.transaction.findMany({
+          where: { userId, symbol, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.prisma.realizedGain.findMany({
+          where: { userId, symbol, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.prisma.stockPriceHistory.findMany({
+          where: { symbol },
+          orderBy: { timestamp: 'asc' },
+          select: { price: true, timestamp: true },
+          take: 500,
+        }),
+        this.redis.hgetall('market:prices'),
+      ]);
 
     // Reconstruct from transactions if position row doesn't exist
-    if (!position && txns.length === 0) throw new NotFoundException(`No position found for ${symbol}`);
+    if (!position && txns.length === 0)
+      throw new NotFoundException(`No position found for ${symbol}`);
 
     const { price: currentPrice } = this.parseLivePriceFull(rawPrices, symbol);
 
@@ -383,7 +565,9 @@ export class PortfolioService {
           runCost = runCost.add(tQty.mul(tPx));
           runQty = runQty.add(tQty);
         } else {
-          const sellFraction = runQty.isZero() ? new Decimal(0) : tQty.div(runQty);
+          const sellFraction = runQty.isZero()
+            ? new Decimal(0)
+            : tQty.div(runQty);
           runCost = runCost.sub(runCost.mul(sellFraction));
           runQty = runQty.sub(tQty);
           if (runQty.isNegative()) runQty = new Decimal(0);
@@ -398,9 +582,13 @@ export class PortfolioService {
     const buyTxns = txns.filter((t) => t.type === TransactionType.BUY);
 
     // Original totals from all BUY transactions (never zeroed out)
-    const totalQtyBought = buyTxns.reduce((s, t) => s.add(t.quantity.toString()), new Decimal(0));
+    const totalQtyBought = buyTxns.reduce(
+      (s, t) => s.add(t.quantity.toString()),
+      new Decimal(0),
+    );
     const totalBuyCostRaw = buyTxns.reduce(
-      (s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
+      (s, t) =>
+        s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
       new Decimal(0),
     );
     const totalBuyFeesRaw = buyTxns.reduce(
@@ -409,22 +597,38 @@ export class PortfolioService {
     );
     const totalOriginalInvested = totalBuyCostRaw.add(totalBuyFeesRaw);
     // Weighted avg entry price across ALL buys (for break-even display on closed positions)
-    const avgBuyPrice = totalQtyBought.isZero() ? new Decimal(0) : totalBuyCostRaw.div(totalQtyBought);
+    const avgBuyPrice = totalQtyBought.isZero()
+      ? new Decimal(0)
+      : totalBuyCostRaw.div(totalQtyBought);
 
     // For open positions use live avgPx; for closed positions use historical avg buy price
     const displayAvgPx = qty.isZero() ? avgBuyPrice : avgPx;
-    const displayInvested = invested.isZero() ? totalOriginalInvested : invested;
+    const displayInvested = invested.isZero()
+      ? totalOriginalInvested
+      : invested;
 
     const breakEvenPrice = displayAvgPx.toFixed(2);
-    const gapToBreakEven = currentPrice != null && !displayAvgPx.isZero()
-      ? ((currentPrice - displayAvgPx.toNumber()) / displayAvgPx.toNumber() * 100).toFixed(2)
-      : null;
-    const unrealizedPnL = currentPrice != null && !qty.isZero()
-      ? new Decimal(currentPrice).sub(displayAvgPx).mul(qty).toFixed(2)
-      : null;
-    const unrealizedPct = currentPrice != null && !qty.isZero() && !displayInvested.isZero()
-      ? new Decimal(currentPrice).sub(displayAvgPx).mul(qty).div(displayInvested).mul(100).toFixed(2)
-      : null;
+    const gapToBreakEven =
+      currentPrice != null && !displayAvgPx.isZero()
+        ? (
+            ((currentPrice - displayAvgPx.toNumber()) /
+              displayAvgPx.toNumber()) *
+            100
+          ).toFixed(2)
+        : null;
+    const unrealizedPnL =
+      currentPrice != null && !qty.isZero()
+        ? new Decimal(currentPrice).sub(displayAvgPx).mul(qty).toFixed(2)
+        : null;
+    const unrealizedPct =
+      currentPrice != null && !qty.isZero() && !displayInvested.isZero()
+        ? new Decimal(currentPrice)
+            .sub(displayAvgPx)
+            .mul(qty)
+            .div(displayInvested)
+            .mul(100)
+            .toFixed(2)
+        : null;
 
     // days held = days since first BUY
     const firstBuy = buyTxns[0] ?? null;
@@ -433,20 +637,27 @@ export class PortfolioService {
       : null;
 
     // total fees
-    const totalFeesPaid = txns.reduce(
-      (sum, t) => sum.add((t as any).fees?.toString() ?? '0'), new Decimal(0),
-    ).toFixed(2);
+    const totalFeesPaid = txns
+      .reduce(
+        (sum, t) => sum.add((t as any).fees?.toString() ?? '0'),
+        new Decimal(0),
+      )
+      .toFixed(2);
 
     // cost basis ladder — show all original buy lots
     // For open positions: scale to currently-held fraction; for closed: show all lots
     const heldFraction = totalQtyBought.isZero()
       ? new Decimal(1)
-      : qty.isZero() ? new Decimal(1) : qty.div(totalQtyBought);
+      : qty.isZero()
+        ? new Decimal(1)
+        : qty.div(totalQtyBought);
 
     const costBasisLadder = buyTxns.map((t) => {
       const buyPx = new Decimal(t.price.toString());
       const originalLotQty = new Decimal(t.quantity.toString());
-      const displayLotQty = qty.isZero() ? originalLotQty : originalLotQty.mul(heldFraction);
+      const displayLotQty = qty.isZero()
+        ? originalLotQty
+        : originalLotQty.mul(heldFraction);
       return {
         date: t.createdAt.toISOString(),
         quantity: parseFloat(displayLotQty.toFixed(4)),
@@ -477,27 +688,33 @@ export class PortfolioService {
       let pnlOnSell: string | null = null;
       let returnPctOnSell: string | null = null;
       if (t.type === TransactionType.SELL) {
-        const matched = realizedGains.find((g) =>
-          new Decimal(g.quantity.toString()).eq(tQty) &&
-          new Decimal(g.sellPrice.toString()).eq(tPx) &&
-          Math.abs(g.createdAt.getTime() - t.createdAt.getTime()) < 10000,
+        const matched = realizedGains.find(
+          (g) =>
+            new Decimal(g.quantity.toString()).eq(tQty) &&
+            new Decimal(g.sellPrice.toString()).eq(tPx) &&
+            Math.abs(g.createdAt.getTime() - t.createdAt.getTime()) < 10000,
         );
         if (matched) {
           pnlOnSell = new Decimal(matched.profit.toString()).toFixed(2);
           const avgPx = new Decimal(matched.avgPrice.toString());
-          returnPctOnSell = avgPx.isZero() ? null : tPx.sub(avgPx).div(avgPx).mul(100).toFixed(2);
+          returnPctOnSell = avgPx.isZero()
+            ? null
+            : tPx.sub(avgPx).div(avgPx).mul(100).toFixed(2);
         }
       }
 
       return {
-        id: t.id, type: t.type,
+        id: t.id,
+        type: t.type,
         quantity: t.quantity.toString(),
         price: tPx.toFixed(2),
         fees: tFees.toFixed(2),
         total: tQty.mul(tPx).toFixed(2),
         createdAt: t.createdAt,
         cumulativeQty: cumQty.toFixed(4),
-        cumulativeAvgPrice: cumQty.isZero() ? '0.00' : cumInv.div(cumQty).toFixed(2),
+        cumulativeAvgPrice: cumQty.isZero()
+          ? '0.00'
+          : cumInv.div(cumQty).toFixed(2),
         pnlOnSell,
         returnPctOnSell,
       };
@@ -505,14 +722,19 @@ export class PortfolioService {
 
     const isClosed = qty.isZero();
     const sellTxns = txns.filter((t) => t.type === TransactionType.SELL);
-    const closedDate = isClosed && sellTxns.length > 0
-      ? sellTxns[sellTxns.length - 1].createdAt.toISOString()
-      : null;
+    const closedDate =
+      isClosed && sellTxns.length > 0
+        ? sellTxns[sellTxns.length - 1].createdAt.toISOString()
+        : null;
     const totalRealizedPnL = realizedGains
       .reduce((s, g) => s.add(g.profit.toString()), new Decimal(0))
       .toFixed(2);
     const totalProceedsFromSells = sellTxns
-      .reduce((s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())), new Decimal(0))
+      .reduce(
+        (s, t) =>
+          s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
+        new Decimal(0),
+      )
       .toFixed(2);
 
     return {
@@ -546,9 +768,13 @@ export class PortfolioService {
         avgPrice: new Decimal(g.avgPrice.toString()).toFixed(2),
         profit: new Decimal(g.profit.toString()).toFixed(2),
         fees: new Decimal(g.fees.toString()).toFixed(2),
-        returnPct: new Decimal(g.avgPrice.toString()).isZero() ? null
-          : new Decimal(g.sellPrice.toString()).sub(g.avgPrice.toString())
-              .div(g.avgPrice.toString()).mul(100).toFixed(2),
+        returnPct: new Decimal(g.avgPrice.toString()).isZero()
+          ? null
+          : new Decimal(g.sellPrice.toString())
+              .sub(g.avgPrice.toString())
+              .div(g.avgPrice.toString())
+              .mul(100)
+              .toFixed(2),
         createdAt: g.createdAt,
       })),
     };
@@ -570,7 +796,10 @@ export class PortfolioService {
     }
 
     const [txns, realizedGains] = await Promise.all([
-      this.prisma.transaction.findMany({ where, orderBy: { createdAt: 'asc' } }),
+      this.prisma.transaction.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+      }),
       this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null } }),
     ]);
 
@@ -578,9 +807,11 @@ export class PortfolioService {
     let feesCumulative = new Decimal(0);
     let totalFees = new Decimal(0);
     let totalRealizedPnL = new Decimal(0);
-    let totalBuys = 0, totalSells = 0;
+    let totalBuys = 0,
+      totalSells = 0;
 
-    for (const g of realizedGains) totalRealizedPnL = totalRealizedPnL.add(g.profit.toString());
+    for (const g of realizedGains)
+      totalRealizedPnL = totalRealizedPnL.add(g.profit.toString());
 
     const rows = txns.map((t) => {
       const qty = new Decimal(t.quantity.toString());
@@ -599,16 +830,20 @@ export class PortfolioService {
         runningBalance = runningBalance.add(total).sub(fees);
         totalSells++;
         const matched = realizedGains.find(
-          (g) => g.symbol === t.symbol &&
-                 new Decimal(g.quantity.toString()).eq(qty) &&
-                 new Decimal(g.sellPrice.toString()).eq(px) &&
-                 Math.abs(g.createdAt.getTime() - t.createdAt.getTime()) < 10000,
+          (g) =>
+            g.symbol === t.symbol &&
+            new Decimal(g.quantity.toString()).eq(qty) &&
+            new Decimal(g.sellPrice.toString()).eq(px) &&
+            Math.abs(g.createdAt.getTime() - t.createdAt.getTime()) < 10000,
         );
-        if (matched) pnlOnSell = new Decimal(matched.profit.toString()).toFixed(2);
+        if (matched)
+          pnlOnSell = new Decimal(matched.profit.toString()).toFixed(2);
       }
 
       return {
-        id: t.id, symbol: t.symbol, type: t.type,
+        id: t.id,
+        symbol: t.symbol,
+        type: t.type,
         quantity: qty.toString(),
         price: px.toFixed(2),
         fees: fees.toFixed(2),
@@ -634,7 +869,7 @@ export class PortfolioService {
 
   // ── Risk Analytics (Feature 4) ────────────────────────────────────────────
 
-  async getRiskAnalytics(userId: string) {
+  async getRiskAnalytics(userId: string, fromDate?: Date, toDate?: Date) {
     const [positions, rawPrices] = await Promise.all([
       this.positionsService.findByUser(userId),
       this.redis.hgetall('market:prices'),
@@ -647,7 +882,9 @@ export class PortfolioService {
       const currPx = this.parseLivePrice(rawPrices, pos.symbol);
       const effectivePx = currPx ?? avgPx;
       const value = qty.mul(effectivePx);
-      const unrealizedPnL = currPx ? currPx.sub(avgPx).mul(qty) : new Decimal(0);
+      const unrealizedPnL = currPx
+        ? currPx.sub(avgPx).mul(qty)
+        : new Decimal(0);
       totalPortfolioValue = totalPortfolioValue.add(value);
       return {
         symbol: pos.symbol,
@@ -662,10 +899,15 @@ export class PortfolioService {
 
     // HHI & concentration
     const weights = items.map((i) =>
-      totalPortfolioValue.isZero() ? new Decimal(0) : i.value.div(totalPortfolioValue).mul(100),
+      totalPortfolioValue.isZero()
+        ? new Decimal(0)
+        : i.value.div(totalPortfolioValue).mul(100),
     );
     const hhi = weights.reduce((sum, w) => sum.add(w.pow(2)), new Decimal(0));
-    const diversificationScore = Math.max(0, Math.min(100, 100 - hhi.div(100).toNumber()));
+    const diversificationScore = Math.max(
+      0,
+      Math.min(100, 100 - hhi.div(100).toNumber()),
+    );
 
     const sorted = [...items].sort((a, b) => b.value.sub(a.value).toNumber());
     const top3 = sorted.slice(0, 3);
@@ -674,20 +916,36 @@ export class PortfolioService {
       ? '0.00'
       : top3Value.div(totalPortfolioValue).mul(100).toFixed(2);
 
-    // max drawdown from timeline (90 days)
-    const from90 = new Date(Date.now() - 90 * 86400000);
-    const timelineData = await this.getTimeline(userId, from90, new Date());
-    let drawdown = { maxDrawdownPct: '0.00', maxDrawdownAbs: '0.00', drawdownPeriod: null as null | { from: string; to: string } };
+    // max drawdown from timeline
+    const tlFrom = fromDate ?? new Date(Date.now() - 90 * 86400000);
+    const tlTo = toDate ?? new Date();
+    const timelineData = await this.getTimeline(userId, tlFrom, tlTo);
+    let drawdown = {
+      maxDrawdownPct: '0.00',
+      maxDrawdownAbs: '0.00',
+      drawdownPeriod: null as null | { from: string; to: string },
+    };
     if ((timelineData as any).timeline?.length > 1) {
-      const tl: { timestamp: string; totalValue: string }[] = (timelineData as any).timeline;
+      const tl: { timestamp: string; totalValue: string }[] = (
+        timelineData as any
+      ).timeline;
       let peak = parseFloat(tl[0].totalValue);
       let peakDate = tl[0].timestamp;
-      let maxDD = 0, maxDDAbs = 0, troughDate = tl[0].timestamp;
+      let maxDD = 0,
+        maxDDAbs = 0,
+        troughDate = tl[0].timestamp;
       for (const pt of tl) {
         const val = parseFloat(pt.totalValue);
-        if (val > peak) { peak = val; peakDate = pt.timestamp; }
-        const dd = peak > 0 ? (val - peak) / peak * 100 : 0;
-        if (dd < maxDD) { maxDD = dd; maxDDAbs = val - peak; troughDate = pt.timestamp; }
+        if (val > peak) {
+          peak = val;
+          peakDate = pt.timestamp;
+        }
+        const dd = peak > 0 ? ((val - peak) / peak) * 100 : 0;
+        if (dd < maxDD) {
+          maxDD = dd;
+          maxDDAbs = val - peak;
+          troughDate = pt.timestamp;
+        }
       }
       drawdown = {
         maxDrawdownPct: maxDD.toFixed(2),
@@ -701,7 +959,9 @@ export class PortfolioService {
         top3Holdings: top3.map((i) => ({
           symbol: i.symbol,
           value: i.value.toFixed(2),
-          percent: totalPortfolioValue.isZero() ? '0.00' : i.value.div(totalPortfolioValue).mul(100).toFixed(2),
+          percent: totalPortfolioValue.isZero()
+            ? '0.00'
+            : i.value.div(totalPortfolioValue).mul(100).toFixed(2),
         })),
         top3Percent,
         hhi: hhi.toFixed(0),
@@ -709,11 +969,15 @@ export class PortfolioService {
       },
       positionRisk: items.map((i) => ({
         symbol: i.symbol,
-        portfolioPercent: totalPortfolioValue.isZero() ? '0.00' : i.value.div(totalPortfolioValue).mul(100).toFixed(2),
+        portfolioPercent: totalPortfolioValue.isZero()
+          ? '0.00'
+          : i.value.div(totalPortfolioValue).mul(100).toFixed(2),
         marketValue: i.value.toFixed(2),
         capitalAtRisk: i.value.toFixed(2),
         unrealizedPnL: i.unrealizedPnL.toFixed(2),
-        unrealizedPct: i.invested.isZero() ? '0.00' : i.unrealizedPnL.div(i.invested).mul(100).toFixed(2),
+        unrealizedPct: i.invested.isZero()
+          ? '0.00'
+          : i.unrealizedPnL.div(i.invested).mul(100).toFixed(2),
       })),
       drawdown,
     };
@@ -722,7 +986,9 @@ export class PortfolioService {
   // ── P&L Calendar (Feature 5) ──────────────────────────────────────────────
 
   async getPnLCalendar(userId: string, year: number) {
-    const rows = await this.prisma.$queryRaw<{ date: Date; pnl: string; trades: bigint }[]>`
+    const rows = await this.prisma.$queryRaw<
+      { date: Date; pnl: string; trades: bigint }[]
+    >`
       SELECT DATE_TRUNC('day', created_at) AS date,
              SUM(profit)::text             AS pnl,
              COUNT(*)                      AS trades
@@ -750,8 +1016,10 @@ export class PortfolioService {
     });
 
     const grades: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 };
-    let totalHoldDays = 0, holdCount = 0;
-    let totalAnnualized = new Decimal(0), annualizedCount = 0;
+    let totalHoldDays = 0,
+      holdCount = 0;
+    let totalAnnualized = new Decimal(0),
+      annualizedCount = 0;
 
     const trades = await Promise.all(
       gains.map(async (g) => {
@@ -760,18 +1028,31 @@ export class PortfolioService {
         const avgPx = new Decimal(g.avgPrice.toString());
         const profit = new Decimal(g.profit.toString());
 
-        const returnPct = avgPx.isZero() ? new Decimal(0) : sellPx.sub(avgPx).div(avgPx).mul(100);
+        const returnPct = avgPx.isZero()
+          ? new Decimal(0)
+          : sellPx.sub(avgPx).div(avgPx).mul(100);
 
         // find matching BUY
         const buyTx = await this.prisma.transaction.findFirst({
-          where: { userId, symbol: g.symbol, type: TransactionType.BUY, deletedAt: null, createdAt: { lt: g.createdAt } },
+          where: {
+            userId,
+            symbol: g.symbol,
+            type: TransactionType.BUY,
+            deletedAt: null,
+            createdAt: { lt: g.createdAt },
+          },
           orderBy: { createdAt: 'desc' },
         });
 
         let holdDays: number | null = null;
         let annualizedReturn: string | null = null;
         if (buyTx) {
-          holdDays = Math.max(1, Math.floor((g.createdAt.getTime() - buyTx.createdAt.getTime()) / 86400000));
+          holdDays = Math.max(
+            1,
+            Math.floor(
+              (g.createdAt.getTime() - buyTx.createdAt.getTime()) / 86400000,
+            ),
+          );
           totalHoldDays += holdDays;
           holdCount++;
           const ann = returnPct.div(100).mul(365).div(holdDays).mul(100);
@@ -811,8 +1092,12 @@ export class PortfolioService {
       trades,
       summary: {
         totalTrades: trades.length,
-        avgHoldDays: holdCount > 0 ? Math.round(totalHoldDays / holdCount) : null,
-        avgAnnualizedReturn: annualizedCount > 0 ? totalAnnualized.div(annualizedCount).toFixed(2) : null,
+        avgHoldDays:
+          holdCount > 0 ? Math.round(totalHoldDays / holdCount) : null,
+        avgAnnualizedReturn:
+          annualizedCount > 0
+            ? totalAnnualized.div(annualizedCount).toFixed(2)
+            : null,
         gradeDistribution: grades,
       },
     };
@@ -822,7 +1107,13 @@ export class PortfolioService {
 
   async getInsights(userId: string) {
     const analytics = await this.getAnalytics(userId);
-    const insights: { type: string; icon: string; message: string; symbol?: string; priority: number }[] = [];
+    const insights: {
+      type: string;
+      icon: string;
+      message: string;
+      symbol?: string;
+      priority: number;
+    }[] = [];
 
     const totalInv = parseFloat(analytics.portfolioValue.totalInvested);
     let totalFees = new Decimal(0);
@@ -830,21 +1121,25 @@ export class PortfolioService {
     for (const pos of analytics.positions as any[]) {
       const avgPx = parseFloat(pos.averagePrice);
       const currPx = pos.currentPrice;
-      const gap = currPx != null ? ((currPx - avgPx) / avgPx * 100) : null;
+      const gap = currPx != null ? ((currPx - avgPx) / avgPx) * 100 : null;
 
       if (gap !== null && gap < -2) {
         insights.push({
-          type: 'WARNING', icon: 'trending-down',
+          type: 'WARNING',
+          icon: 'trending-down',
           message: `${pos.symbol} is ${Math.abs(gap).toFixed(1)}% below break-even (avg ${pos.averagePrice} EGP)`,
-          symbol: pos.symbol, priority: 1,
+          symbol: pos.symbol,
+          priority: 1,
         });
       }
 
       if (pos.daysSinceFirstBuy != null && pos.daysSinceFirstBuy > 30) {
         insights.push({
-          type: 'INFO', icon: 'clock',
+          type: 'INFO',
+          icon: 'clock',
           message: `You've held ${pos.symbol} for ${pos.daysSinceFirstBuy} days (since avg cost ${pos.averagePrice} EGP)`,
-          symbol: pos.symbol, priority: 3,
+          symbol: pos.symbol,
+          priority: 3,
         });
       }
 
@@ -852,22 +1147,31 @@ export class PortfolioService {
     }
 
     // concentration warning
-    const positions = (analytics.positions as any[]);
+    const positions = analytics.positions as any[];
     if (positions.length >= 3) {
       const rawPrices = await this.redis.hgetall('market:prices');
       let totalVal = new Decimal(0);
       const vals = positions.map((p) => {
-        const px = this.parseLivePrice(rawPrices, p.symbol) ?? new Decimal(p.averagePrice);
+        const px =
+          this.parseLivePrice(rawPrices, p.symbol) ??
+          new Decimal(p.averagePrice);
         const v = new Decimal(p.totalQuantity).mul(px);
         totalVal = totalVal.add(v);
         return { symbol: p.symbol, v };
       });
       const sorted = vals.sort((a, b) => b.v.sub(a.v).toNumber());
-      const top3Pct = totalVal.isZero() ? 0 :
-        sorted.slice(0, 3).reduce((s, i) => s.add(i.v), new Decimal(0)).div(totalVal).mul(100).toNumber();
+      const top3Pct = totalVal.isZero()
+        ? 0
+        : sorted
+            .slice(0, 3)
+            .reduce((s, i) => s.add(i.v), new Decimal(0))
+            .div(totalVal)
+            .mul(100)
+            .toNumber();
       if (top3Pct > 60) {
         insights.push({
-          type: 'WARNING', icon: 'concentration',
+          type: 'WARNING',
+          icon: 'concentration',
           message: `Top 3 holdings = ${top3Pct.toFixed(1)}% of portfolio — consider diversifying`,
           priority: 2,
         });
@@ -875,19 +1179,25 @@ export class PortfolioService {
     }
 
     // fee warning
-    if (totalInv > 0 && totalFees.toNumber() / totalInv * 100 > 1) {
+    if (totalInv > 0 && (totalFees.toNumber() / totalInv) * 100 > 1) {
       insights.push({
-        type: 'WARNING', icon: 'fee',
-        message: `Fees have consumed ${(totalFees.toNumber() / totalInv * 100).toFixed(2)}% of invested capital`,
+        type: 'WARNING',
+        icon: 'fee',
+        message: `Fees have consumed ${((totalFees.toNumber() / totalInv) * 100).toFixed(2)}% of invested capital`,
         priority: 2,
       });
     }
 
     // all profitable
-    const allProfitable = positions.every((p: any) => p.currentPrice != null && parseFloat(p.currentPrice) > parseFloat(p.averagePrice));
+    const allProfitable = positions.every(
+      (p: any) =>
+        p.currentPrice != null &&
+        parseFloat(p.currentPrice) > parseFloat(p.averagePrice),
+    );
     if (positions.length > 0 && allProfitable) {
       insights.push({
-        type: 'SUCCESS', icon: 'trending-up',
+        type: 'SUCCESS',
+        icon: 'trending-up',
         message: `All ${positions.length} positions are currently above break-even`,
         priority: 5,
       });
@@ -904,8 +1214,12 @@ export class PortfolioService {
         where: { userId, symbol, deletedAt: null },
         orderBy: { createdAt: 'asc' },
       }),
-      this.prisma.position.findFirst({ where: { userId, symbol, deletedAt: null } }),
-      this.prisma.realizedGain.findMany({ where: { userId, symbol, deletedAt: null } }),
+      this.prisma.position.findFirst({
+        where: { userId, symbol, deletedAt: null },
+      }),
+      this.prisma.realizedGain.findMany({
+        where: { userId, symbol, deletedAt: null },
+      }),
     ]);
 
     let totalBought = new Decimal(0);
@@ -922,10 +1236,13 @@ export class PortfolioService {
     return {
       symbol,
       transactions: transactions.map((t) => ({
-        id: t.id, type: t.type,
+        id: t.id,
+        type: t.type,
         quantity: t.quantity.toString(),
         price: new Decimal(t.price.toString()).toFixed(2),
-        total: new Decimal(t.quantity.toString()).mul(t.price.toString()).toFixed(2),
+        total: new Decimal(t.quantity.toString())
+          .mul(t.price.toString())
+          .toFixed(2),
         createdAt: t.createdAt,
       })),
       summary: {
@@ -957,31 +1274,46 @@ export class PortfolioService {
     const allTxns = await this.prisma.transaction.findMany({
       where: { userId, deletedAt: null },
       orderBy: { createdAt: 'asc' },
-      select: { symbol: true, type: true, quantity: true, price: true, createdAt: true },
+      select: {
+        symbol: true,
+        type: true,
+        quantity: true,
+        price: true,
+        createdAt: true,
+      },
     });
 
     // Build sorted array of { timestamp, cumulativeInvested }
     let runningInvested = new Decimal(0);
     const investedSnapshots: { timestamp: Date; invested: Decimal }[] = [];
     for (const tx of allTxns) {
-      const txTotal = new Decimal(tx.price.toString()).mul(new Decimal(tx.quantity.toString()));
+      const txTotal = new Decimal(tx.price.toString()).mul(
+        new Decimal(tx.quantity.toString()),
+      );
       if (tx.type === TransactionType.BUY) {
         runningInvested = runningInvested.add(txTotal);
       } else {
         runningInvested = runningInvested.sub(txTotal);
         if (runningInvested.lt(0)) runningInvested = new Decimal(0);
       }
-      investedSnapshots.push({ timestamp: tx.createdAt, invested: new Decimal(runningInvested.toString()) });
+      investedSnapshots.push({
+        timestamp: tx.createdAt,
+        invested: new Decimal(runningInvested.toString()),
+      });
     }
 
     // Helper: find cumulative invested at a given timestamp via binary search
     const getInvestedAt = (ts: Date): Decimal => {
       if (investedSnapshots.length === 0) return currentTotalInvested;
-      let lo = 0, hi = investedSnapshots.length - 1, best = -1;
+      let lo = 0,
+        hi = investedSnapshots.length - 1,
+        best = -1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        if (investedSnapshots[mid].timestamp <= ts) { best = mid; lo = mid + 1; }
-        else hi = mid - 1;
+        if (investedSnapshots[mid].timestamp <= ts) {
+          best = mid;
+          lo = mid + 1;
+        } else hi = mid - 1;
       }
       return best >= 0 ? investedSnapshots[best].invested : new Decimal(0);
     };
@@ -992,21 +1324,33 @@ export class PortfolioService {
       select: { symbol: true, price: true, timestamp: true },
     });
 
-    const byTimestamp = new Map<string, { priceMap: Record<string, Decimal>; date: Date }>();
+    const byTimestamp = new Map<
+      string,
+      { priceMap: Record<string, Decimal>; date: Date }
+    >();
     for (const h of history) {
       const key = h.timestamp.toISOString();
-      if (!byTimestamp.has(key)) byTimestamp.set(key, { priceMap: {}, date: h.timestamp });
-      byTimestamp.get(key)!.priceMap[h.symbol] = new Decimal(h.price.toString());
+      if (!byTimestamp.has(key))
+        byTimestamp.set(key, { priceMap: {}, date: h.timestamp });
+      byTimestamp.get(key)!.priceMap[h.symbol] = new Decimal(
+        h.price.toString(),
+      );
     }
 
-    const timeline = Array.from(byTimestamp.entries()).map(([timestamp, { priceMap, date }]) => {
-      let totalValue = new Decimal(0);
-      for (const symbol of symbols) {
-        const px = priceMap[symbol];
-        if (px) totalValue = totalValue.add(px.mul(qtyBySymbol[symbol]));
-      }
-      return { timestamp, totalValue: totalValue.toFixed(2), totalInvested: getInvestedAt(date).toFixed(2) };
-    });
+    const timeline = Array.from(byTimestamp.entries()).map(
+      ([timestamp, { priceMap, date }]) => {
+        let totalValue = new Decimal(0);
+        for (const symbol of symbols) {
+          const px = priceMap[symbol];
+          if (px) totalValue = totalValue.add(px.mul(qtyBySymbol[symbol]));
+        }
+        return {
+          timestamp,
+          totalValue: totalValue.toFixed(2),
+          totalInvested: getInvestedAt(date).toFixed(2),
+        };
+      },
+    );
 
     // Always append current live prices from Redis as the "now" data point
     // so the chart has at least 1 point even when price history is sparse
@@ -1024,7 +1368,11 @@ export class PortfolioService {
       if (hasAnyPrice) {
         const nowKey = new Date().toISOString();
         if (!byTimestamp.has(nowKey)) {
-          timeline.push({ timestamp: nowKey, totalValue: currentValue.toFixed(2), totalInvested: currentTotalInvested.toFixed(2) });
+          timeline.push({
+            timestamp: nowKey,
+            totalValue: currentValue.toFixed(2),
+            totalInvested: currentTotalInvested.toFixed(2),
+          });
         }
       }
     }
@@ -1035,9 +1383,15 @@ export class PortfolioService {
     if (timeline.length < 2) {
       const txTimeline = await this.buildTransactionTimeline(userId, from, to);
       if (txTimeline.length > 0) {
-        const merged = [...timeline, ...txTimeline].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        const merged = [...timeline, ...txTimeline].sort((a, b) =>
+          a.timestamp.localeCompare(b.timestamp),
+        );
         const seen = new Set<string>();
-        const deduped = merged.filter((p) => { if (seen.has(p.timestamp)) return false; seen.add(p.timestamp); return true; });
+        const deduped = merged.filter((p) => {
+          if (seen.has(p.timestamp)) return false;
+          seen.add(p.timestamp);
+          return true;
+        });
         return { timeline: deduped };
       }
     }
@@ -1049,16 +1403,28 @@ export class PortfolioService {
     userId: string,
     from: Date,
     to: Date,
-  ): Promise<{ timestamp: string; totalValue: string; totalInvested: string }[]> {
+  ): Promise<
+    { timestamp: string; totalValue: string; totalInvested: string }[]
+  > {
     const allTxns = await this.prisma.transaction.findMany({
       where: { userId, deletedAt: null },
       orderBy: { createdAt: 'asc' },
-      select: { symbol: true, type: true, quantity: true, price: true, createdAt: true },
+      select: {
+        symbol: true,
+        type: true,
+        quantity: true,
+        price: true,
+        createdAt: true,
+      },
     });
 
     const holdings: Record<string, { qty: Decimal; lastPrice: Decimal }> = {};
     let cumulativeInvested = new Decimal(0);
-    const result: { timestamp: string; totalValue: string; totalInvested: string }[] = [];
+    const result: {
+      timestamp: string;
+      totalValue: string;
+      totalInvested: string;
+    }[] = [];
 
     for (const tx of allTxns) {
       const txPrice = new Decimal(tx.price.toString());
@@ -1075,7 +1441,8 @@ export class PortfolioService {
         cumulativeInvested = cumulativeInvested.add(txTotal);
       } else {
         holdings[tx.symbol].qty = holdings[tx.symbol].qty.sub(txQty);
-        if (holdings[tx.symbol].qty.lt(0)) holdings[tx.symbol].qty = new Decimal(0);
+        if (holdings[tx.symbol].qty.lt(0))
+          holdings[tx.symbol].qty = new Decimal(0);
         cumulativeInvested = cumulativeInvested.sub(txTotal);
         if (cumulativeInvested.lt(0)) cumulativeInvested = new Decimal(0);
       }
@@ -1098,9 +1465,23 @@ export class PortfolioService {
 
   // ── Realized Gains List ───────────────────────────────────────────────────
 
-  async getRealizedGainsList(userId: string) {
+  async getRealizedGainsList(userId: string, fromDate?: Date, toDate?: Date) {
+    const dateFilter =
+      fromDate || toDate
+        ? {
+            ...(fromDate ? { gte: fromDate } : {}),
+            ...(toDate ? { lte: toDate } : {}),
+          }
+        : undefined;
     const [gains, buyTxns] = await Promise.all([
-      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.realizedGain.findMany({
+        where: {
+          userId,
+          deletedAt: null,
+          ...(dateFilter ? { createdAt: dateFilter } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.transaction.findMany({
         where: { userId, type: TransactionType.BUY, deletedAt: null },
         orderBy: { createdAt: 'asc' },
@@ -1111,32 +1492,54 @@ export class PortfolioService {
     // First BUY date per symbol for hold-days calculation
     const firstBuyBySymbol: Record<string, Date> = {};
     for (const tx of buyTxns) {
-      if (!firstBuyBySymbol[tx.symbol]) firstBuyBySymbol[tx.symbol] = tx.createdAt;
+      if (!firstBuyBySymbol[tx.symbol])
+        firstBuyBySymbol[tx.symbol] = tx.createdAt;
     }
 
-    const totalProfit    = gains.reduce((s, g) => s.add(new Decimal(g.profit.toString())), new Decimal(0));
-    const totalFees      = gains.reduce((s, g) => s.add(new Decimal(g.fees.toString())), new Decimal(0));
-    const totalQuantity  = gains.reduce((s, g) => s.add(new Decimal(g.quantity.toString())), new Decimal(0));
-    const totalCostBasis = gains.reduce(
-      (s, g) => s.add(new Decimal(g.avgPrice.toString()).mul(new Decimal(g.quantity.toString()))),
+    const totalProfit = gains.reduce(
+      (s, g) => s.add(new Decimal(g.profit.toString())),
       new Decimal(0),
     );
-    const totalReturn = totalCostBasis.isZero() ? null : totalProfit.div(totalCostBasis).mul(100).toFixed(2);
+    const totalFees = gains.reduce(
+      (s, g) => s.add(new Decimal(g.fees.toString())),
+      new Decimal(0),
+    );
+    const totalQuantity = gains.reduce(
+      (s, g) => s.add(new Decimal(g.quantity.toString())),
+      new Decimal(0),
+    );
+    const totalCostBasis = gains.reduce(
+      (s, g) =>
+        s.add(
+          new Decimal(g.avgPrice.toString()).mul(
+            new Decimal(g.quantity.toString()),
+          ),
+        ),
+      new Decimal(0),
+    );
+    const totalReturn = totalCostBasis.isZero()
+      ? null
+      : totalProfit.div(totalCostBasis).mul(100).toFixed(2);
     const uniqueSymbols = new Set(gains.map((g) => g.symbol)).size;
 
     // Average hold days: (sellDate - firstBuyDate) per gain, then average
     const holdDaysArr: number[] = [];
     const gainRecords = gains.map((g) => {
-      const profit    = new Decimal(g.profit.toString());
+      const profit = new Decimal(g.profit.toString());
       const sellPrice = new Decimal(g.sellPrice.toString());
-      const avgPrice  = new Decimal(g.avgPrice.toString());
-      const qty       = new Decimal(g.quantity.toString());
+      const avgPrice = new Decimal(g.avgPrice.toString());
+      const qty = new Decimal(g.quantity.toString());
       const costBasis = avgPrice.mul(qty);
-      const returnPct = costBasis.isZero() ? null : profit.div(costBasis).mul(100).toFixed(2);
+      const returnPct = costBasis.isZero()
+        ? null
+        : profit.div(costBasis).mul(100).toFixed(2);
 
       const firstBuy = firstBuyBySymbol[g.symbol];
       const holdDays = firstBuy
-        ? Math.max(0, Math.floor((g.createdAt.getTime() - firstBuy.getTime()) / 86400000))
+        ? Math.max(
+            0,
+            Math.floor((g.createdAt.getTime() - firstBuy.getTime()) / 86400000),
+          )
         : null;
       if (holdDays != null) holdDaysArr.push(holdDays);
 
@@ -1161,16 +1564,18 @@ export class PortfolioService {
     return {
       gains: gainRecords,
       summary: {
-        totalProfit:    totalProfit.toFixed(2),
-        totalFees:      totalFees.toFixed(2),
-        totalQuantity:  totalQuantity.toFixed(2),
+        totalProfit: totalProfit.toFixed(2),
+        totalFees: totalFees.toFixed(2),
+        totalQuantity: totalQuantity.toFixed(2),
         totalCostBasis: totalCostBasis.toFixed(2),
         totalReturn,
         uniqueSymbols,
         avgHoldDays,
-        count:     gains.length,
-        winCount:  gains.filter((g) => new Decimal(g.profit.toString()).gt(0)).length,
-        lossCount: gains.filter((g) => new Decimal(g.profit.toString()).lte(0)).length,
+        count: gains.length,
+        winCount: gains.filter((g) => new Decimal(g.profit.toString()).gt(0))
+          .length,
+        lossCount: gains.filter((g) => new Decimal(g.profit.toString()).lte(0))
+          .length,
       },
     };
   }
@@ -1184,7 +1589,13 @@ export class PortfolioService {
     const rawPrices = await this.redis.hgetall('market:prices');
 
     let totalValue = new Decimal(0);
-    const items: { symbol: string; value: Decimal; qty: Decimal; avgPx: Decimal; currPx: Decimal | null }[] = [];
+    const items: {
+      symbol: string;
+      value: Decimal;
+      qty: Decimal;
+      avgPx: Decimal;
+      currPx: Decimal | null;
+    }[] = [];
 
     for (const pos of positions) {
       const qty = new Decimal(pos.totalQuantity.toString());
@@ -1196,7 +1607,8 @@ export class PortfolioService {
       items.push({ symbol: pos.symbol, value, qty, avgPx, currPx });
     }
 
-    const pct = (v: Decimal) => totalValue.isZero() ? '0.00' : v.div(totalValue).mul(100).toFixed(2);
+    const pct = (v: Decimal) =>
+      totalValue.isZero() ? '0.00' : v.div(totalValue).mul(100).toFixed(2);
 
     const bySymbol = items
       .map((item) => ({
@@ -1214,11 +1626,28 @@ export class PortfolioService {
 
   // ── Closed Positions (full history of exited trades) ─────────────────────
 
-  async getClosedPositions(userId: string) {
+  async getClosedPositions(userId: string, fromDate?: Date, toDate?: Date) {
+    const dateFilter =
+      fromDate || toDate
+        ? {
+            ...(fromDate ? { gte: fromDate } : {}),
+            ...(toDate ? { lte: toDate } : {}),
+          }
+        : undefined;
     const [positions, txns, gains] = await Promise.all([
       this.positionsService.findByUser(userId),
-      this.prisma.transaction.findMany({ where: { userId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
-      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.transaction.findMany({
+        where: { userId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.realizedGain.findMany({
+        where: {
+          userId,
+          deletedAt: null,
+          ...(dateFilter ? { createdAt: dateFilter } : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
     // Use RealizedGain as source — ALL symbols with any sell history (partial or full)
@@ -1233,18 +1662,26 @@ export class PortfolioService {
       const symbolGains = gains.filter((g) => g.symbol === symbol);
 
       const buyTxns = symbolTxns.filter((t) => t.type === TransactionType.BUY);
-      const sellTxns = symbolTxns.filter((t) => t.type === TransactionType.SELL);
+      const sellTxns = symbolTxns.filter(
+        (t) => t.type === TransactionType.SELL,
+      );
 
-      const currentQty = pos ? new Decimal(pos.totalQuantity.toString()) : new Decimal(0);
+      const currentQty = pos
+        ? new Decimal(pos.totalQuantity.toString())
+        : new Decimal(0);
       const isClosed = currentQty.isZero();
 
       // Cost basis = sum of (qty * price + fees) for all BUY transactions
       const totalBuyCost = buyTxns.reduce(
-        (s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())).add((t as any).fees?.toString() ?? '0'),
+        (s, t) =>
+          s
+            .add(new Decimal(t.quantity.toString()).mul(t.price.toString()))
+            .add((t as any).fees?.toString() ?? '0'),
         new Decimal(0),
       );
       const totalProceeds = sellTxns.reduce(
-        (s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
+        (s, t) =>
+          s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())),
         new Decimal(0),
       );
       const totalFees = symbolTxns.reduce(
@@ -1257,22 +1694,52 @@ export class PortfolioService {
       );
 
       // Cost of the portion that was sold (not total buy cost)
-      const totalSoldQty = symbolGains.reduce((s, g) => s.add(new Decimal(g.quantity.toString())), new Decimal(0));
-      const avgBuyPrice = buyTxns.length > 0
-        ? buyTxns.reduce((s, t) => s.add(new Decimal(t.quantity.toString()).mul(t.price.toString())), new Decimal(0))
-            .div(buyTxns.reduce((s, t) => s.add(new Decimal(t.quantity.toString())), new Decimal(0)))
-        : new Decimal(0);
+      const totalSoldQty = symbolGains.reduce(
+        (s, g) => s.add(new Decimal(g.quantity.toString())),
+        new Decimal(0),
+      );
+      const avgBuyPrice =
+        buyTxns.length > 0
+          ? buyTxns
+              .reduce(
+                (s, t) =>
+                  s.add(
+                    new Decimal(t.quantity.toString()).mul(t.price.toString()),
+                  ),
+                new Decimal(0),
+              )
+              .div(
+                buyTxns.reduce(
+                  (s, t) => s.add(new Decimal(t.quantity.toString())),
+                  new Decimal(0),
+                ),
+              )
+          : new Decimal(0);
       const soldCostBasis = totalSoldQty.mul(avgBuyPrice);
-      const returnPct = soldCostBasis.isZero() ? null : totalProfit.div(soldCostBasis).mul(100).toFixed(2);
+      const returnPct = soldCostBasis.isZero()
+        ? null
+        : totalProfit.div(soldCostBasis).mul(100).toFixed(2);
 
       const openDate = buyTxns[0]?.createdAt?.toISOString() ?? null;
-      const closeDate = isClosed && sellTxns.length > 0 ? sellTxns[sellTxns.length - 1].createdAt.toISOString() : null;
-      const lastSellDate = sellTxns.length > 0 ? sellTxns[sellTxns.length - 1].createdAt.toISOString() : null;
-      const holdDays = openDate && closeDate
-        ? Math.floor((new Date(closeDate).getTime() - new Date(openDate).getTime()) / 86400000)
-        : null;
+      const closeDate =
+        isClosed && sellTxns.length > 0
+          ? sellTxns[sellTxns.length - 1].createdAt.toISOString()
+          : null;
+      const lastSellDate =
+        sellTxns.length > 0
+          ? sellTxns[sellTxns.length - 1].createdAt.toISOString()
+          : null;
+      const holdDays =
+        openDate && closeDate
+          ? Math.floor(
+              (new Date(closeDate).getTime() - new Date(openDate).getTime()) /
+                86400000,
+            )
+          : null;
 
-      const winCount = symbolGains.filter((g) => new Decimal(g.profit.toString()).gt(0)).length;
+      const winCount = symbolGains.filter((g) =>
+        new Decimal(g.profit.toString()).gt(0),
+      ).length;
       const lossCount = symbolGains.length - winCount;
 
       return {

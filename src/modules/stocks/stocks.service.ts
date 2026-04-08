@@ -225,7 +225,17 @@ export class StocksService {
     };
 
     const [stocks, total] = await Promise.all([
-      this.prisma.stock.findMany({ where, skip, take: limit, orderBy: { symbol: 'asc' } }),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT symbol, name, sector, market_cap AS "marketCap", pe, updated_at AS "updatedAt"
+         FROM stocks
+         WHERE TRUE
+         ${search ? `AND (symbol ILIKE $1 OR name ILIKE $1)` : ''}
+         ${minPE != null ? `AND pe >= ${Number(minPE)}` : ''}
+         ${maxPE != null ? `AND pe <= ${Number(maxPE)}` : ''}
+         ORDER BY CASE WHEN symbol ~ '^[a-zA-Z]' THEN 0 ELSE 1 END, symbol ASC
+         LIMIT ${limit} OFFSET ${skip}`,
+        ...(search ? [`%${search}%`] : []),
+      ),
       this.prisma.stock.count({ where }),
     ]);
 

@@ -6,7 +6,7 @@ import {
 } from 'technicalindicators';
 
 type Trend = 'uptrend' | 'downtrend' | 'sideways';
-type Signal = 'Strong Buy' | 'Buy' | 'Neutral' | 'Sell' | 'Strong Sell';
+type Signal = 'Hot' | 'Warming Up' | 'Neutral' | 'Cooling Down' | 'Cold';
 type Confidence = 'High' | 'Medium' | 'Low';
 type MACDTrend = 'bullish' | 'bearish' | 'neutral';
 type RSIZone = 'overbought' | 'oversold' | 'neutral';
@@ -177,10 +177,10 @@ export class TechnicalAnalysisService {
     if (deathCross) { score -= 20; basis.push('Death Cross recently detected'); }
 
     const action: Signal =
-      score >= 50 ? 'Strong Buy' :
-      score >= 20 ? 'Buy' :
-      score <= -50 ? 'Strong Sell' :
-      score <= -20 ? 'Sell' : 'Neutral';
+      score >= 50 ? 'Hot' :
+      score >= 20 ? 'Warming Up' :
+      score <= -50 ? 'Cold' :
+      score <= -20 ? 'Cooling Down' : 'Neutral';
 
     const confidence: Confidence =
       (rsi != null && sma200 != null && macd != null) ? 'High' :
