@@ -1,272 +1,272 @@
 symbol,name,sector,price,marketCap,pe,valuation,changePercent,trending,newsCount
-.EGX30,"EGX 30","Unknown",48471.6,,,,3.82,false,0
-.EGX70EWI,"EGX 70 EWI","Unknown",12961.5,,,,1.3,false,0
-4170,"Tourism Enterprise Co.","Unknown",15.41,,,,1.64,false,0
+.EGX30,"EGX 30","Unknown",48563.59,,,,4.06,false,0
+.EGX70EWI,"EGX 70 EWI","Unknown",12970,,,,1.34,false,0
+4170,"Tourism Enterprise Co.","Unknown",15.41,,,,1.38,false,0
 9510,"National Building And Marketing Co","Unknown",39.12,,,,-4.59,false,0
-AALR,"General Co Land Recl Devel Reconst","Unknown",165,,,,1.23,false,0
-ABUK,"Abu Qir Fertilizers and Chemical Industries Co SAE","Unknown",82.12,,,,-4,false,0
-ACAMD,"Arab Co for Asset Management and Development","Unknown",1.82,,,,6.43,false,0
-ACAP,"A Capital Holding","Unknown",7.56,,,,0.26,false,0
-ACGC,"Arab Cotton Ginning","Unknown",7.89,,,,1.28,false,0
+AALR,"General Co Land Recl Devel Reconst","Unknown",165.01,,,,1.23,false,0
+ABUK,"Abu Qir Fertilizers and Chemical Industries Co SAE","Unknown",82.4,,,,-4.08,false,0
+ACAMD,"Arab Co for Asset Management and Development","Unknown",1.83,,,,6.43,false,0
+ACAP,"A Capital Holding","Unknown",7.61,,,,0.26,false,0
+ACGC,"Arab Cotton Ginning","Unknown",7.89,,,,1.15,false,0
 ACRO,"Acrow Misr","Unknown",100,,,,-8.26,false,0
-ACTF,"Act Financial SAE Co","Unknown",2.7,,,,1.52,false,0
-ADCI,"Arab Pharmaceuticals","Unknown",160.5,,,,0.24,false,0
-ADIB,"Abu Dhabi Islamic Bank- Egypt","Unknown",42.41,,,,4.58,false,0
-ADPC,"The Arab Dairy Products Co.","Unknown",3.46,,,,2.37,false,0
-ADRI,"Arab Development & Real Estate Investment","Unknown",6.03,,,,-1.98,false,0
-AFDI,"El Ahli Investment and Development","Unknown",33.65,,,,1.73,false,0
-AFMC,"Alexandria Flour Mills","Unknown",62,,,,2.16,false,0
+ACTF,"Act Financial SAE Co","Unknown",2.69,,,,1.89,false,0
+ADCI,"Arab Pharmaceuticals","Unknown",160.36,,,,0.15,false,0
+ADIB,"Abu Dhabi Islamic Bank- Egypt","Unknown",42.65,,,,5.52,false,0
+ADPC,"The Arab Dairy Products Co.","Unknown",3.47,,,,2.66,false,0
+ADRI,"Arab Development & Real Estate Investment","Unknown",6,,,,-1.98,false,0
+AFDI,"El Ahli Investment and Development","Unknown",33.8,,,,2.19,false,0
+AFMC,"Alexandria Flour Mills","Unknown",62.39,,,,2.99,false,0
 AGIN,"Gulf Arab Investment Co SAE","Unknown",0.003,,,,0,false,0
-AIFI,"Atlas for Land Reclamation and Agricultural Processing SAE","Unknown",1.68,,,,0,false,0
-AIHC,"Arabia Investments Holding SAE","Unknown",0.322,,,,3.88,false,0
-AJWA,"AJWA for Food Industries company","Unknown",119.01,,,,4.46,false,0
-ALCN,"Alexandria Containers and goods","Unknown",32.55,,,,1.21,false,0
+AIFI,"Atlas for Land Reclamation and Agricultural Processing SAE","Unknown",1.68,,,,-0.6,false,0
+AIHC,"Arabia Investments Holding SAE","Unknown",0.323,,,,4.21,false,0
+AJWA,"AJWA for Food Industries company","Unknown",119.9,,,,4.29,false,0
+ALCN,"Alexandria Containers and goods","Unknown",32.3,,,,-0.16,false,0
 ALEX,"Alexandria Cement","Unknown",14.5,,,,-4.48,false,0
 ALUM,"Arab Aluminum","Unknown",20.6,,,,0.78,false,0
-AMER,"Amer Group Holding","Unknown",1.85,,,,1.65,false,0
-AMES,"Alexandria New Medical Center","Unknown",46.6,,,,0.65,false,0
-AMIA,"Arab Moltaka Investments Co","Unknown",5.65,,,,2.36,false,0
-AMOC,"Alexandria Mineral Oils Company","Unknown",8.19,,,,-4.77,false,0
-AMPI,"Novida for Investment and Technology","Unknown",2.72,,,,4.23,false,0
-ANFI,"Alexandria National Company Fin Inv","Unknown",103.98,,,,0.72,false,0
+AMER,"Amer Group Holding","Unknown",1.86,,,,1.65,false,0
+AMES,"Alexandria New Medical Center","Unknown",46.55,,,,0.65,false,0
+AMIA,"Arab Moltaka Investments Co","Unknown",5.79,,,,2.36,false,0
+AMOC,"Alexandria Mineral Oils Company","Unknown",8.18,,,,-4.88,false,0
+AMPI,"Novida for Investment and Technology","Unknown",2.72,,,,4.62,false,0
+ANFI,"Alexandria National Company Fin Inv","Unknown",104.8,,,,1.51,false,0
 APPC,"Advanced Pharma Packaging Co.","Unknown",1.22,,,,-2.4,false,0
-APSW,"Arab and Polvara Spinning and Weaving Company SAE","Unknown",8.19,,,,-1.22,false,0
-ARAB,"Arab Developers Holding","Unknown",0.179,,,,0.56,false,0
-ARCC,"Arabian Cement Co SAE","Unknown",57,,,,-0.3,false,0
-AREH,"Egyptian Real Estate Group","Unknown",1.17,,,,3.6,false,0
+APSW,"Arab and Polvara Spinning and Weaving Company SAE","Unknown",8.18,,,,-0.37,false,0
+ARAB,"Arab Developers Holding","Unknown",0.18,,,,0,false,0
+ARCC,"Arabian Cement Co SAE","Unknown",57.09,,,,0.3,false,0
+AREH,"Egyptian Real Estate Group","Unknown",1.15,,,,4.51,false,0
 ARPI,"Arabian Rocks Plastic Industries","Unknown",0.08,,,,0,false,0
-ARVA,"Arab Valves Company","Unknown",7.3,,,,0.97,false,0
-ASCM,"ASEC Co for Mining SAE","Unknown",41.05,,,,1.86,false,0
+ARVA,"Arab Valves Company","Unknown",7.29,,,,0.83,false,0
+ASCM,"ASEC Co for Mining SAE","Unknown",41.01,,,,1.74,false,0
 ASPI,"Aspire Capital Holding for Financial Investments","Unknown",0.288,,,,1.05,false,0
-ATLC,"Al Tawfeek Leasing Company SAE","Unknown",4.85,,,,1.9,false,0
-ATQA,"Misr National Steel SAE","Unknown",8.9,,,,5.44,false,0
-AXPH,"Alexandria Pharmaceuticals","Unknown",815,,,,0.27,false,0
-BIDI,"El Bader Plastic Co SAE","Unknown",1.37,,,,-2.78,false,0
-BIGP,"Barbary Investment Group","Unknown",0.186,,,,-0.54,false,0
-BINV,"B Investments Holding SAE","Unknown",40.69,,,,0.62,false,0
-BIOC,"Glaxo Smith Kline","Unknown",62.36,,,,0.53,false,0
-BONY,"Bonyan Development and Trade","Unknown",4.14,,,,1.23,false,0
+ATLC,"Al Tawfeek Leasing Company SAE","Unknown",4.85,,,,2.75,false,0
+ATQA,"Misr National Steel SAE","Unknown",8.93,,,,5.79,false,0
+AXPH,"Alexandria Pharmaceuticals","Unknown",813,,,,0.27,false,0
+BIDI,"El Bader Plastic Co SAE","Unknown",1.37,,,,-4.86,false,0
+BIGP,"Barbary Investment Group","Unknown",0.187,,,,0.54,false,0
+BINV,"B Investments Holding SAE","Unknown",40.58,,,,0.62,false,0
+BIOC,"Glaxo Smith Kline","Unknown",62.79,,,,0.53,false,0
+BONY,"Bonyan Development and Trade","Unknown",4.12,,,,1.47,false,0
 BTFH,"Beltone Financial Holding","Unknown",2.89,,,,2.12,false,0
-CAED,"Cairo Educational Services","Unknown",60.59,,,,-3.27,false,0
-CANA,"Suez Canal Bank","Unknown",48.86,,,,2.26,false,0
-CCAP,"Qalaa Holdings SAE","Unknown",3.94,,,,-3.42,false,0
-CCRS,"Gulf Canadian RE Investment Co.","Unknown",1.57,,,,3.29,false,0
+CAED,"Cairo Educational Services","Unknown",60.49,,,,-4.04,false,0
+CANA,"Suez Canal Bank","Unknown",49,,,,2.61,false,0
+CCAP,"Qalaa Holdings SAE","Unknown",3.93,,,,-3.9,false,0
+CCRS,"Gulf Canadian RE Investment Co.","Unknown",1.58,,,,3.29,false,0
 CEFM,"Middle Egypt Flour Mills","Unknown",91.13,,,,-0.73,false,0
 CERA,"The Arab Ceramic Ceramica Remas","Unknown",1.06,,,,1.92,false,0
 CFGH,"Al Arafa Investment & Consultancies","Unknown",0.106,,,,-3.64,false,0
-CICH,"CI Capital Holding Co SAE","Unknown",11.24,,,,5.86,false,0
-CIEB,"Credit Agricole Egypt","Unknown",27.24,,,,2.41,false,0
-CIRA,"Cairo for Investment and Real Estate Development SAE","Unknown",18.03,,,,2.94,false,0
-CLHO,"Cleopatra Hospital","Unknown",12.38,,,,2.98,false,0
-CNFN,"Contact Financial Holding SAE","Unknown",4.2,,,,2.43,false,0
-COMI,"Commercial International Bank","Unknown",127.28,,,,4.43,false,0
-COPR,"Copper for Commercial Investment & Real Estate Development SAE","Unknown",0.283,,,,1.8,false,0
-COSG,"Cairo Oils & Soap","Unknown",1.35,,,,3.08,false,0
-CPCI,"Kahira Pharmaceuticals and Chemical Industries Co","Unknown",262.38,,,,0.94,false,0
+CICH,"CI Capital Holding Co SAE","Unknown",11.2,,,,5.86,false,0
+CIEB,"Credit Agricole Egypt","Unknown",27.06,,,,2.59,false,0
+CIRA,"Cairo for Investment and Real Estate Development SAE","Unknown",18.25,,,,3.11,false,0
+CLHO,"Cleopatra Hospital","Unknown",12.26,,,,2.98,false,0
+CNFN,"Contact Financial Holding SAE","Unknown",4.22,,,,2.43,false,0
+COMI,"Commercial International Bank","Unknown",127.4,,,,4.34,false,0
+COPR,"Copper for Commercial Investment & Real Estate Development SAE","Unknown",0.282,,,,1.8,false,0
+COSG,"Cairo Oils & Soap","Unknown",1.35,,,,3.85,false,0
+CPCI,"Kahira Pharmaceuticals and Chemical Industries Co","Unknown",262.98,,,,1.12,false,0
 CPME,"Catalyst Partners Middle East CPME","Unknown",17.85,,,,-0.5,false,0
-CRST,"Creast Mark for Contracting and Real Estate Development","Unknown",0.69,,,,-1,false,0
-CSAG,"Canal Shipping Agencies","Unknown",29.15,,,,2.81,false,0
+CRST,"Creast Mark for Contracting and Real Estate Development","Unknown",0.688,,,,-1.43,false,0
+CSAG,"Canal Shipping Agencies","Unknown",29.15,,,,2.46,false,0
 CTSB,"City Trade Securities and Brokerage SAE","Unknown",0.1,,,,0,false,0
-DAPH,"Development&Engineering Consultants","Unknown",78.39,,,,1.12,false,0
+DAPH,"Development&Engineering Consultants","Unknown",78.01,,,,1.78,false,0
 DCRC,"Delta Construction & Rebuilding","Unknown",50,,,,0,false,0
 DEIN,"Delta Insurance","Unknown",11.38,,,,0,false,0
-DGTZ,"DIGITIZE for Investment and","Unknown",2.99,,,,1.36,false,0
+DGTZ,"DIGITIZE for Investment and","Unknown",2.95,,,,1.36,false,0
 DIFC,"International Dry Ice Company","Unknown",10.14,,,,0.1,false,0
-DOMT,"Arabian Food Industries Co","Unknown",23.76,,,,-0.04,false,0
-DSCW,"Dice Sport & Casual Wear","Unknown",1.88,,,,2.17,false,0
-DTPP,"Delta For Printing & Packaging","Unknown",117,,,,0.65,false,0
-EALR,"El Arabia for Land Reclamation","Unknown",333.8,,,,1.64,false,0
-EASB,"Egyptian Arabian Secur Brokerage","Unknown",3.65,,,,0,false,0
-EAST,"Eastern Tobacco","Unknown",37.11,,,,2.81,false,0
-EBSC,"Osool ESB Securities Brokerage Co","Unknown",1.6,,,,2.55,false,0
+DOMT,"Arabian Food Industries Co","Unknown",23.85,,,,0,false,0
+DSCW,"Dice Sport & Casual Wear","Unknown",1.87,,,,1.09,false,0
+DTPP,"Delta For Printing & Packaging","Unknown",117.5,,,,0.65,false,0
+EALR,"El Arabia for Land Reclamation","Unknown",333.8,,,,1.1,false,0
+EASB,"Egyptian Arabian Secur Brokerage","Unknown",3.67,,,,1.38,false,0
+EAST,"Eastern Tobacco","Unknown",37.07,,,,3.5,false,0
+EBSC,"Osool ESB Securities Brokerage Co","Unknown",1.58,,,,0.64,false,0
 ECAP,"Al Ezz Ceramic & Porcelain","Unknown",27,,,,2.62,false,0
 EDFM,"East Delta Flour Mills","Unknown",317.4,,,,0.11,false,0
-EEII,"El Arabia Engineering Industries","Unknown",2,,,,5.26,false,0
+EEII,"El Arabia Engineering Industries","Unknown",1.99,,,,4.74,false,0
 EFIC,"Egyptian Financial & Industrial","Unknown",218.5,,,,-2.24,false,0
-EFID,"Edita Food Industries SAE","Unknown",27.44,,,,8.85,false,0
-EFIH,"E-finance for Digital and Financial Investements","Unknown",19.9,,,,5.59,false,0
-EGAL,"Egypt Aluminum","Unknown",296.03,,,,-4.57,false,0
-EGAS,"Egypt Gas Co SAE","Unknown",42.04,,,,0.65,false,0
-EGBE,"Egyptian Gulf Bank","Unknown",0.378,,,,3.55,false,0
-EGCH,"Egyptian Chemical Industries","Unknown",11.23,,,,-0.53,false,0
+EFID,"Edita Food Industries SAE","Unknown",27.4,,,,8.85,false,0
+EFIH,"E-finance for Digital and Financial Investements","Unknown",19.91,,,,5.59,false,0
+EGAL,"Egypt Aluminum","Unknown",295.07,,,,-5.12,false,0
+EGAS,"Egypt Gas Co SAE","Unknown",42.17,,,,0.65,false,0
+EGBE,"Egyptian Gulf Bank","Unknown",0.38,,,,3.28,false,0
+EGCH,"Egyptian Chemical Industries","Unknown",11.25,,,,-0.8,false,0
 EGREF,"Egyptians Real Estate Fund SAE","Unknown",12.15,,,,-1.06,false,0
 EGSA,"Egyptian Satellite Co SAE","Unknown",7.67,,,,0.79,false,0
-EGTS,"Egyptian for Tourism Resorts","Unknown",7.45,,,,0.81,false,0
+EGTS,"Egyptian for Tourism Resorts","Unknown",7.43,,,,0.68,false,0
 EHDR,"Egyptians Housing Development","Unknown",2.11,,,,0.48,false,0
 EITP,"Egyptian Co for International","Unknown",9.01,,,,0,false,0
 ELEC,"Electro Cable Egypt","Unknown",2.07,,,,0.49,false,0
 ELKA,"El Kahera Housing","Unknown",1.06,,,,1.92,false,0
 ELNA,"El Nasr Agricultural Crops","Unknown",38,,,,2.76,false,0
-ELSH,"El Shams Housing & Urbanization","Unknown",7.12,,,,1.43,false,0
-ELWA,"El Wadi Co. Touristic Investement","Unknown",1.67,,,,0,false,0
-EMFD,"Emaar Misr for Development SAE","Unknown",9.32,,,,2.31,false,0
-ENGC,"Industrial Engineering Co","Unknown",32.7,,,,2.91,false,0
+ELSH,"El Shams Housing & Urbanization","Unknown",7.12,,,,1.57,false,0
+ELWA,"El Wadi Co. Touristic Investement","Unknown",1.65,,,,0,false,0
+EMFD,"Emaar Misr for Development SAE","Unknown",9.3,,,,2.31,false,0
+ENGC,"Industrial Engineering Co","Unknown",32.87,,,,2.28,false,0
 EOSB,"Al Orouba Securities Brokerage Co SAE","Unknown",1.17,,,,0,false,0
-EPCO,"Egypt for Poultry","Unknown",8.54,,,,0.83,false,0
-EPPK,"El Ahram Co. For Printing & Packing","Unknown",12.72,,,,0,false,0
+EPCO,"Egypt for Poultry","Unknown",8.54,,,,0.71,false,0
+EPPK,"El Ahram Co. For Printing & Packing","Unknown",12.75,,,,0.24,false,0
 ESRS,"Ezz Steel","Unknown",141,,,,0,false,0
-ETEL,"Telecom Egypt","Unknown",92.16,,,,4.21,false,0
-ETRS,"Egyptian Transport & Commercial Services Co SAE","Unknown",7.5,,,,0.54,false,0
-EXPA,"Export Development Bank of Egypt","Unknown",16.71,,,,1.63,false,0
-FAIT,"Faisal Islamic Bank of Egypt - EGP","Unknown",34.45,,,,2.17,false,0
-FAITA,"Faisal Islamic Bank of Egypt - USD","Unknown",1.02,,,,1,false,0
-FCMD,"Future Care for Medical Industries","Unknown",10.86,,,,0.28,false,0
-FERC,"Ferchem Egypt Fertilizers and Chemicals SAE","Unknown",81,,,,3.23,false,0
-FIRE,"First Investment and Real Estate Development SAE","Unknown",2.65,,,,-1.85,false,0
+ETEL,"Telecom Egypt","Unknown",91.91,,,,4.99,false,0
+ETRS,"Egyptian Transport & Commercial Services Co SAE","Unknown",7.49,,,,0.67,false,0
+EXPA,"Export Development Bank of Egypt","Unknown",16.7,,,,1.15,false,0
+FAIT,"Faisal Islamic Bank of Egypt - EGP","Unknown",34.6,,,,2.47,false,0
+FAITA,"Faisal Islamic Bank of Egypt - USD","Unknown",1.01,,,,1,false,0
+FCMD,"Future Care for Medical Industries","Unknown",10.86,,,,0.75,false,0
+FERC,"Ferchem Egypt Fertilizers and Chemicals SAE","Unknown",80.8,,,,2.21,false,0
+FIRE,"First Investment and Real Estate Development SAE","Unknown",2.67,,,,-1.85,false,0
 FNAR,"Al Fanar Contracting Construction Trade Import And Export Co","Unknown",7.35,,,,-0.41,false,0
 FTNS,"Fitness Prime Co","Unknown",1.2,,,,-0.83,false,0
-FWRY,"Fawry Banking and Payment","Unknown",18.69,,,,4.26,false,0
-GBCO,"GB AUTO","Unknown",26.09,,,,6.17,false,0
+FWRY,"Fawry Banking and Payment","Unknown",18.67,,,,4.82,false,0
+GBCO,"GB AUTO","Unknown",26.18,,,,7.11,false,0
 GDWA,"Gadwa for Industrial Development","Unknown",0.748,,,,0.4,false,0
 GETO,"Genial Tours","Unknown",15,,,,0,false,0
-GGCC,"Giza General Contracting","Unknown",0.365,,,,0.83,false,0
-GGRN,"Go Green for Agricultural","Unknown",2.1,,,,-1.86,false,0
-GIHD,"Gharbia Islamic Housing Development","Unknown",37.17,,,,1.09,false,0
-GMCI,"GMC Group Industrial Commercial","Unknown",1.74,,,,-1.11,false,0
+GGCC,"Giza General Contracting","Unknown",0.363,,,,1.11,false,0
+GGRN,"Go Green for Agricultural","Unknown",2.12,,,,-1.86,false,0
+GIHD,"Gharbia Islamic Housing Development","Unknown",37.17,,,,1.56,false,0
+GMCI,"GMC Group Industrial Commercial","Unknown",1.74,,,,-3.87,false,0
 GOCO,"Golden Coast Company","Unknown",0.8,,,,0,false,0
-GPIM,"GPI for Urban Growth","Unknown",0.901,,,,-0.44,false,0
+GPIM,"GPI for Urban Growth","Unknown",0.9,,,,-0.88,false,0
 GPPL,"Golden Pyramids Plaza","Unknown",1.4,,,,0,false,0
-GRCA,"Grand Investment Capital","Unknown",55.12,,,,1.95,false,0
-GSSC,"General Silos & Storage","Unknown",235.8,,,,0.36,false,0
+GRCA,"Grand Investment Capital","Unknown",54.84,,,,2.11,false,0
+GSSC,"General Silos & Storage","Unknown",239,,,,0.36,false,0
 GTEX,"GTEX for Commercial and Industrial","Unknown",0.03,,,,3.03,false,0
 GTHE,"Global Telecom Holding SAE","Unknown",2.3,,,,13.86,false,0
-GTWL,"Golden Textiles & Clothes Wool","Unknown",44.6,,,,0.86,false,0
-HBCO,"Heibco for Commercial Investments","Unknown",7.25,,,,4.61,false,0
+GTWL,"Golden Textiles & Clothes Wool","Unknown",44.88,,,,0.86,false,0
+HBCO,"Heibco for Commercial Investments","Unknown",7.34,,,,5.19,false,0
 HCFI,"Holding Company for Financial Investments SAE","Unknown",3.5,,,,0,false,0
-HDBK,"Housing & Development Bank","Unknown",138.65,,,,1.42,false,0
-HELI,"Misr El Gadida for Housing and Development SAE","Unknown",5.52,,,,1.47,false,0
-HRHO,"EFG Hermes Holdings SAE","Unknown",26.39,,,,4.44,false,0
-IBCT,"International Business Corporation for Trading Comercial Agencies SAE","Unknown",10.7,,,,1.61,false,0
-ICFC,"International Company For Fertilizers & Chemicals","Unknown",14.7,,,,0.55,false,0
-ICID,"International Co Invest&Development","Unknown",3.98,,,,1.79,false,0
+HDBK,"Housing & Development Bank","Unknown",138.01,,,,1.43,false,0
+HELI,"Misr El Gadida for Housing and Development SAE","Unknown",5.55,,,,1.47,false,0
+HRHO,"EFG Hermes Holdings SAE","Unknown",26.34,,,,4.55,false,0
+IBCT,"International Business Corporation for Trading Comercial Agencies SAE","Unknown",10.62,,,,1.23,false,0
+ICFC,"International Company For Fertilizers & Chemicals","Unknown",14.65,,,,0.34,false,0
+ICID,"International Co Invest&Development","Unknown",3.99,,,,1.53,false,0
 ICLE,"International Company For Leasing","Unknown",15.76,,,,0,false,0
 ICMI,"International company For Medical Industries","Unknown",10.6,,,,-0.47,false,0
-IDRE,"New lsmailia for Urban Development Company SAE","Unknown",33.5,,,,0.57,false,0
-IEEC,"Industrial Engineer Enterprises","Unknown",0.411,,,,1.98,false,0
-IFAP,"International Agricultural Products","Unknown",19.45,,,,1.3,false,0
-INEG,"Integrated Engineering Group SAE","Unknown",0.438,,,,2.09,false,0
-INFI,"Ismailia National Food Industries","Unknown",88,,,,1.3,false,0
+IDRE,"New lsmailia for Urban Development Company SAE","Unknown",33.18,,,,-0.09,false,0
+IEEC,"Industrial Engineer Enterprises","Unknown",0.409,,,,1.98,false,0
+IFAP,"International Agricultural Products","Unknown",19.4,,,,1.36,false,0
+INEG,"Integrated Engineering Group SAE","Unknown",0.438,,,,1.63,false,0
+INFI,"Ismailia National Food Industries","Unknown",87.99,,,,0.88,false,0
 IRAX,"EL Ezz Aldekhela Steel - Alexandria","Unknown",1250,,,,0,false,0
-IRON,"Egyptian Iron & Steel","Unknown",33.36,,,,-2.57,false,0
-ISMA,"Ismailia Misr Poultry","Unknown",14.2,,,,0.92,false,0
+IRON,"Egyptian Iron & Steel","Unknown",33.57,,,,-2.42,false,0
+ISMA,"Ismailia Misr Poultry","Unknown",14.2,,,,1.42,false,0
 ISMQ,"Iron & Steel for Mines & Quarries","Unknown",7.16,,,,2.43,false,0
-ISPH,"Ibnsina Pharma Co","Unknown",10.4,,,,3.39,false,0
-JUFO,"Juhayna Food Industries","Unknown",26.68,,,,5.06,false,0
-KABO,"El Nasr Clothing & Textiles","Unknown",6,,,,-0.83,false,0
-KRDI,"Al Khair River for Development Agricultural Investment and Environmental Service","Unknown",0.38,,,,5.22,false,0
-KWIN,"Cairo National Co for Investment and Securities SAE","Unknown",61.1,,,,2.5,false,0
-KZPC,"Kafr El Zayat Pesticides","Unknown",9.87,,,,-0.1,false,0
-LCSW,"Lecico Egypt","Unknown",24.8,,,,1.68,false,0
-LUTS,"Lotus for Agricultural Investments","Unknown",0.532,,,,1.53,false,0
-MAAL,"Marseilia Egyptian Gulf Real Estate Investment SAE","Unknown",4.75,,,,3.23,false,0
-MASR,"Madinet Nasr for Housing and Development SAE","Unknown",5.98,,,,1.2,false,0
+ISPH,"Ibnsina Pharma Co","Unknown",10.45,,,,4.08,false,0
+JUFO,"Juhayna Food Industries","Unknown",26.81,,,,5.06,false,0
+KABO,"El Nasr Clothing & Textiles","Unknown",5.97,,,,0,false,0
+KRDI,"Al Khair River for Development Agricultural Investment and Environmental Service","Unknown",0.379,,,,5.22,false,0
+KWIN,"Cairo National Co for Investment and Securities SAE","Unknown",61.5,,,,2.5,false,0
+KZPC,"Kafr El Zayat Pesticides","Unknown",9.9,,,,-0.2,false,0
+LCSW,"Lecico Egypt","Unknown",24.7,,,,1.52,false,0
+LUTS,"Lotus for Agricultural Investments","Unknown",0.53,,,,1.53,false,0
+MAAL,"Marseilia Egyptian Gulf Real Estate Investment SAE","Unknown",4.78,,,,3.23,false,0
+MASR,"Madinet Nasr for Housing and Development SAE","Unknown",5.97,,,,2.39,false,0
 MBEG,"M.B Engineering","Unknown",3.46,,,,3.28,false,0
-MBSC,"Misr Beni Suef Cement","Unknown",249.98,,,,0.39,false,0
-MCQE,"Misr Cement Co ESC","Unknown",177.15,,,,1.75,false,0
-MCRO,"Macro Group Pharmaceutical SAE","Unknown",1.12,,,,0,false,0
+MBSC,"Misr Beni Suef Cement","Unknown",249.5,,,,0.19,false,0
+MCQE,"Misr Cement Co ESC","Unknown",178,,,,1.41,false,0
+MCRO,"Macro Group Pharmaceutical SAE","Unknown",1.13,,,,0,false,0
 MEGM,"Middle East Glass Manufacturing","Unknown",12.54,,,,0,false,0
-MENA,"Mena Touristic & Real Estate Invest","Unknown",5.35,,,,3.48,false,0
-MEPA,"Medical Packaging Company","Unknown",1.51,,,,2.03,false,0
-MFPC,"Misr Fertilizers Production Co SAE","Unknown",42.6,,,,-3.07,false,0
-MFSC,"Egypt Free Shops Company SAE","Unknown",30.88,,,,-0.39,false,0
-MHOT,"Misr Hotels","Unknown",25.3,,,,0.95,false,0
-MICH,"Misr Chemical Industries","Unknown",34.85,,,,-1.79,false,0
-MILS,"North Cairo Mills","Unknown",101.6,,,,0.11,false,0
-MIPH,"Minapharm Pharmaceuticals","Unknown",476.01,,,,1.12,false,0
+MENA,"Mena Touristic & Real Estate Invest","Unknown",5.35,,,,3.28,false,0
+MEPA,"Medical Packaging Company","Unknown",1.51,,,,1.35,false,0
+MFPC,"Misr Fertilizers Production Co SAE","Unknown",42.76,,,,-3.18,false,0
+MFSC,"Egypt Free Shops Company SAE","Unknown",30.86,,,,-0.42,false,0
+MHOT,"Misr Hotels","Unknown",25.19,,,,0.6,false,0
+MICH,"Misr Chemical Industries","Unknown",34.98,,,,-2.52,false,0
+MILS,"North Cairo Mills","Unknown",101.02,,,,-0.04,false,0
+MIPH,"Minapharm Pharmaceuticals","Unknown",475.98,,,,0.27,false,0
 MISR,"Misr Intercontinental for Granite","Unknown",5.51,,,,0,false,0
-MKIT,"Misr Kuwait Investment & Trading Co","Unknown",3.64,,,,3.73,false,0
+MKIT,"Misr Kuwait Investment & Trading Co","Unknown",3.63,,,,4.01,false,0
 MMAT,"Marsa Marsa Alam Tourism Develop","Unknown",3.37,,,,0,false,0
-MOED,"The Egyptian Modern Education Systems","Unknown",0.83,,,,1.1,false,0
-MOIL,"Maridive & oil services","Unknown",0.425,,,,3.66,false,0
+MOED,"The Egyptian Modern Education Systems","Unknown",0.83,,,,1.72,false,0
+MOIL,"Maridive & oil services","Unknown",0.43,,,,3.66,false,0
 MOIN,"Mohandes Insurance","Unknown",22,,,,-2.13,false,0
-MOSC,"Misr Oils & Soap","Unknown",167.85,,,,-0.52,false,0
-MPCI,"Memphis Pharmaceuticals","Unknown",161.51,,,,1.13,false,0
+MOSC,"Misr Oils & Soap","Unknown",167,,,,0.57,false,0
+MPCI,"Memphis Pharmaceuticals","Unknown",161.5,,,,0.79,false,0
 MPCO,"Mansourah Poultry","Unknown",1.55,,,,1.31,false,0
-MPRC,"Egyptian Media Production City","Unknown",29.05,,,,1.01,false,0
-MTIE,"MM Group for Industry","Unknown",7.59,,,,4.13,false,0
+MPRC,"Egyptian Media Production City","Unknown",29.4,,,,0.97,false,0
+MTIE,"MM Group for Industry","Unknown",7.55,,,,4.26,false,0
 NAHO,"Naeem Holding","Unknown",0.106,,,,1.92,false,0
-NARE,"Naeem Real Estate Holding Group","Unknown",9.11,,,,2.72,false,0
+NARE,"Naeem Real Estate Holding Group","Unknown",9.05,,,,2.6,false,0
 NBKE,"National Bank of Kuwait Egypt","Unknown",30.72,,,,-0.03,false,0
-NCCW,"Nasr Company for Civil Works","Unknown",4.74,,,,0.42,false,0
+NCCW,"Nasr Company for Civil Works","Unknown",4.75,,,,0.42,false,0
 NCEM,"National Cement","Unknown",15.19,,,,0,false,0
 NCGC,"Nile Cotton Ginning SAE","Unknown",53.36,,,,3.41,false,0
 NDRL,"National Drilling","Unknown",4.69,,,,0,false,0
-NEDA,"Northern Upper Egypt Development","Unknown",2.33,,,,-0.85,false,0
-NHPS,"National Housing Prof. Syndicates","Unknown",65.99,,,,4.98,false,0
-NINH,"Nozha International Hospital","Unknown",12.63,,,,0.4,false,0
-NIPH,"Nile Pharmaceuticals","Unknown",97.3,,,,0.02,false,0
+NEDA,"Northern Upper Egypt Development","Unknown",2.35,,,,-0.85,false,0
+NHPS,"National Housing Prof. Syndicates","Unknown",66,,,,5.3,false,0
+NINH,"Nozha International Hospital","Unknown",12.56,,,,1.12,false,0
+NIPH,"Nile Pharmaceuticals","Unknown",97.12,,,,-0.02,false,0
 NOAF,"North Africa Co. for RE Investment","Unknown",0.4,,,,0,false,0
-OBRI,"El Obour Real Estate Investment","Unknown",35.7,,,,2.58,false,0
-OCDI,"Six of October Development & Invest","Unknown",20.15,,,,1.11,false,0
-OCPH,"October Pharma","Unknown",300.01,,,,9.48,false,0
-ODIN,"ODIN Investments SAE","Unknown",1.88,,,,1.09,false,0
-OFH,"Orascom Financial Holding SAE","Unknown",0.575,,,,0.88,false,0
-OIH,"Orascom Investment Holding SAE","Unknown",1.44,,,,-1.37,false,0
-OLFI,"Obour Land for Food Industries","Unknown",20.8,,,,1.07,false,0
-ORAS,"Orascom Construction Ltd","Unknown",570,,,,8.13,false,0
-ORHD,"Orascom Hotels and Development SAE","Unknown",26.45,,,,6.09,false,0
-ORWE,"Oriental Weavers","Unknown",22.69,,,,1.75,false,0
+OBRI,"El Obour Real Estate Investment","Unknown",35.73,,,,2.52,false,0
+OCDI,"Six of October Development & Invest","Unknown",20.06,,,,1.21,false,0
+OCPH,"October Pharma","Unknown",300.5,,,,9.3,false,0
+ODIN,"ODIN Investments SAE","Unknown",1.87,,,,2.17,false,0
+OFH,"Orascom Financial Holding SAE","Unknown",0.574,,,,0.88,false,0
+OIH,"Orascom Investment Holding SAE","Unknown",1.45,,,,-1.37,false,0
+OLFI,"Obour Land for Food Industries","Unknown",20.8,,,,0.68,false,0
+ORAS,"Orascom Construction Ltd","Unknown",567.13,,,,8.9,false,0
+ORHD,"Orascom Hotels and Development SAE","Unknown",26.25,,,,6.9,false,0
+ORWE,"Oriental Weavers","Unknown",22.6,,,,1.66,false,0
 PACH,"Paint & Chemicals Industries","Unknown",70.01,,,,0,false,0
-PHAR,"Egyptian International Pharma","Unknown",81.8,,,,1.8,false,0
-PHDC,"Palm Hills Development Company","Unknown",8.59,,,,4,false,0
+PHAR,"Egyptian International Pharma","Unknown",82,,,,1.55,false,0
+PHDC,"Palm Hills Development Company","Unknown",8.62,,,,4.36,false,0
 PHGC,"Premium Healthcare Group","Unknown",0.083,,,,1.22,false,0
 PHTV,"Pyramisa Hotels","Unknown",187,,,,1.46,false,0
-POUL,"Cairo Poultry","Unknown",32.9,,,,-1.54,false,0
-PRCL,"Ceramic & Porcelain","Unknown",16.36,,,,1.67,false,0
-PRDC,"Pioneer Properties for Urban Development","Unknown",4.42,,,,-0.67,false,0
-PRMH,"Prime Holding","Unknown",2.03,,,,0.99,false,0
+POUL,"Cairo Poultry","Unknown",32.72,,,,-3,false,0
+PRCL,"Ceramic & Porcelain","Unknown",16.3,,,,1.18,false,0
+PRDC,"Pioneer Properties for Urban Development","Unknown",4.43,,,,-0.67,false,0
+PRMH,"Prime Holding","Unknown",2.03,,,,0.5,false,0
 PTCC,"Pharaoh tech for control and communication systems","Unknown",19,,,,0,false,0
-QNBE,"Qatar Natl Bank","Unknown",42.72,,,,0.35,false,0
-RACC,"Raya Contact Center Co","Unknown",8.7,,,,1.05,false,0
-RAKT,"General Company for Paper Industry SAE","Unknown",23.63,,,,2.64,false,0
+QNBE,"Qatar Natl Bank","Unknown",42.74,,,,0.77,false,0
+RACC,"Raya Contact Center Co","Unknown",8.69,,,,1.05,false,0
+RAKT,"General Company for Paper Industry SAE","Unknown",23.2,,,,2.34,false,0
 RAYA,"Raya Holding for Financial Investment SAE","Unknown",5.31,,,,1.53,false,0
-RKAZ,"REKAZ Financial Holding","Unknown",2.69,,,,-2.87,false,0
-RMDA,"Tenth of Ramadan for Pharmaceutical","Unknown",4.43,,,,1.63,false,0
-ROTO,"Rowad Tourism Co SAE","Unknown",29.96,,,,1.23,false,0
-RREI,"Arab Real Estate Investment CO.","Unknown",3,,,,0,false,0
-RTVC,"Remco Touristic Villages Constr","Unknown",3.57,,,,1.71,false,0
-RUBX,"Rubex Plastics","Unknown",9.04,,,,1.01,false,0
+RKAZ,"REKAZ Financial Holding","Unknown",2.64,,,,-3.58,false,0
+RMDA,"Tenth of Ramadan for Pharmaceutical","Unknown",4.42,,,,3.26,false,0
+ROTO,"Rowad Tourism Co SAE","Unknown",29.53,,,,2.01,false,0
+RREI,"Arab Real Estate Investment CO.","Unknown",2.99,,,,-0.67,false,0
+RTVC,"Remco Touristic Villages Constr","Unknown",3.57,,,,2,false,0
+RUBX,"Rubex Plastics","Unknown",9.03,,,,1.01,false,0
 SAIB,"Societe Arabe Internationale Banque","Unknown",2.11,,,,0,false,0
-SAUD,"Al Baraka Bank Egypt","Unknown",21,,,,3.49,false,0
-SCEM,"Sinai Cement","Unknown",58.75,,,,-1.67,false,0
-SCFM,"South Cairo & Giza Mills & Bakeries","Unknown",225,,,,0.96,false,0
-SCTS,"Suez Canal Company for Technology Settling SAE","Unknown",374,,,,10.17,false,0
-SDTI,"Sharm Dreams Co. Tourism Investment","Unknown",41.6,,,,1.48,false,0
-SEIG,"Saudi Egyptian Investment & Finance","Unknown",168.3,,,,-4.53,false,0
-SIPC,"Sabaa International Company for Pharmaceutical and Chemical Industries SAE","Unknown",3.22,,,,1.9,false,0
-SKPC,"Sidi Kerir Petrochemicals","Unknown",16.95,,,,-4.93,false,0
-SMFR,"Samad Misr -EGYFERT","Unknown",211,,,,-2.74,false,0
+SAUD,"Al Baraka Bank Egypt","Unknown",21.04,,,,3.19,false,0
+SCEM,"Sinai Cement","Unknown",58.8,,,,-1.89,false,0
+SCFM,"South Cairo & Giza Mills & Bakeries","Unknown",224.11,,,,1.1,false,0
+SCTS,"Suez Canal Company for Technology Settling SAE","Unknown",373.49,,,,10.05,false,0
+SDTI,"Sharm Dreams Co. Tourism Investment","Unknown",41.86,,,,1.36,false,0
+SEIG,"Saudi Egyptian Investment & Finance","Unknown",168.55,,,,-4.34,false,0
+SIPC,"Sabaa International Company for Pharmaceutical and Chemical Industries SAE","Unknown",3.21,,,,1.9,false,0
+SKPC,"Sidi Kerir Petrochemicals","Unknown",16.9,,,,-4.99,false,0
+SMFR,"Samad Misr -EGYFERT","Unknown",211,,,,-3.65,false,0
 SMPP,"Modern Shorouk Printing & Packaging","Unknown",117,,,,6.35,false,0
-SNFC,"Sharkia National Food","Unknown",10.17,,,,-0.29,false,0
+SNFC,"Sharkia National Food","Unknown",10.2,,,,-0.59,false,0
 SNFI,"Souhag National Company Food Industries SAE","Unknown",10.04,,,,-0.2,false,0
 SPHT,"El Shams Pyramids Hotels&Touristic","Unknown",1.91,,,,0,false,0
-SPIN,"Alexandria Spinning & Weaving","Unknown",14.6,,,,1.39,false,0
+SPIN,"Alexandria Spinning & Weaving","Unknown",14.57,,,,1.6,false,0
 SPMD,"Speed Medical SAE","Unknown",0.336,,,,0.9,false,0
-SUGR,"Delta Sugar","Unknown",47.13,,,,0.55,false,0
-SVCE,"South Valley Cement","Unknown",7.75,,,,1.57,false,0
-SWDY,"El Sewedy Electric Co SAE","Unknown",79.35,,,,1.5,false,0
-TALM,"Taaleem Management Services SAE","Unknown",14.88,,,,-0.54,false,0
-TANM,"Tanmiya for Real Estate Investment","Unknown",4.39,,,,0.92,false,0
-TAQA,"TAQA Arabia","Unknown",13.17,,,,0.46,false,0
-TMGH,"T M G Holding","Unknown",82.85,,,,6.5,false,0
+SUGR,"Delta Sugar","Unknown",47.19,,,,0.19,false,0
+SVCE,"South Valley Cement","Unknown",7.74,,,,1.44,false,0
+SWDY,"El Sewedy Electric Co SAE","Unknown",79.5,,,,1.77,false,0
+TALM,"Taaleem Management Services SAE","Unknown",15,,,,-0.54,false,0
+TANM,"Tanmiya for Real Estate Investment","Unknown",4.47,,,,0.92,false,0
+TAQA,"TAQA Arabia","Unknown",13.15,,,,0.46,false,0
+TMGH,"T M G Holding","Unknown",84,,,,7.43,false,0
 TORA,"Egyptian Tourah Portland Cement Co SAE","Unknown",70.5,,,,-3.91,false,0
 TRST,"Thiqah for Business Administration and Development SAE","Unknown",0.06,,,,0,false,0
 TRTO,"TransOceans Tours","Unknown",0.032,,,,3.23,false,0
 UASG,"United Arab Shipping","Unknown",0.42,,,,-2.33,false,0
-UBEE,"United Bank","Unknown",13.6,,,,0.07,false,0
-UEFM,"Upper Egypt Flour Mills","Unknown",503.9,,,,-0.96,false,0
+UBEE,"United Bank","Unknown",13.54,,,,0,false,0
+UEFM,"Upper Egypt Flour Mills","Unknown",503.9,,,,1.62,false,0
 UEGC,"El Saeed Contracting & Real Estate Investment","Unknown",1.38,,,,0.73,false,0
 UNFO,"Univert Food Industries","Unknown",0.31,,,,0,false,0
-UNIP,"Universal Co Packaging Materials","Unknown",0.273,,,,1.11,false,0
-UNIT,"United Housing & Development","Unknown",10.08,,,,-0.89,false,0
-UPMS,"Union Pharmacist Company for Medical Services and Investments","Unknown",8.64,,,,-2.92,false,0
-UTOP,"UTOPIA","Unknown",85.2,,,,-1.74,false,0
-VALU,"U Consumer Finance SAE","Unknown",11.56,,,,2.73,false,0
-VERT,"Vertika","Unknown",5.28,,,,2.51,false,0
+UNIP,"Universal Co Packaging Materials","Unknown",0.274,,,,1.48,false,0
+UNIT,"United Housing & Development","Unknown",10.01,,,,-0.89,false,0
+UPMS,"Union Pharmacist Company for Medical Services and Investments","Unknown",8.6,,,,-3.37,false,0
+UTOP,"UTOPIA","Unknown",85.49,,,,-1.81,false,0
+VALU,"U Consumer Finance SAE","Unknown",11.64,,,,2.56,false,0
+VERT,"Vertika","Unknown",5.26,,,,1.73,false,0
 VLMR,"Valmore Holding SAE","Unknown",0.705,,,,0.71,false,0
-VLMRA,"Valmore Holding SAE A","Unknown",32.7,,,,-4.7,false,0
+VLMRA,"Valmore Holding SAE A","Unknown",32.69,,,,-4.7,false,0
 VODE,"Vodafone Egypt Telecommunications Co SAE","Unknown",119.09,,,,0,false,0
 WCDF,"Middle & West Delta Flour Mills","Unknown",520.89,,,,-0.02,false,0
-WKOL,"Wadi Kom Ombo Land Reclamation","Unknown",283.43,,,,0.11,false,0
-ZEOT,"Extracted Oils","Unknown",8.9,,,,1.71,false,0
-ZMID,"Zahraa Maadi Investment&Development","Unknown",5.33,,,,1.72,false,0
+WKOL,"Wadi Kom Ombo Land Reclamation","Unknown",284.9,,,,0.63,false,0
+ZEOT,"Extracted Oils","Unknown",8.94,,,,1.36,false,0
+ZMID,"Zahraa Maadi Investment&Development","Unknown",5.37,,,,2.48,false,0
