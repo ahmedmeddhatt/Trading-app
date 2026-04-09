@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { GoldService } from './gold.service';
 import { GoldAnalysisService } from '../scraper/services/gold-analysis.service';
+import { SchedulerService } from '../scraper/scheduler.service';
 import { AuthGuard } from '@nestjs/passport';
 
 class OptionalJwtGuard extends AuthGuard('jwt') {
@@ -23,6 +24,7 @@ export class GoldController {
   constructor(
     private readonly goldService: GoldService,
     private readonly goldAnalysis: GoldAnalysisService,
+    private readonly scheduler: SchedulerService,
   ) {}
 
   @Get('dashboard')
@@ -34,6 +36,12 @@ export class GoldController {
   @Get('categories')
   getCategories() {
     return this.goldService.getCategories();
+  }
+
+  @Post('refresh')
+  async refreshPrices() {
+    await this.scheduler.forceGoldScrape();
+    return { ok: true };
   }
 
   @Get(':categoryId/history')

@@ -138,10 +138,10 @@ export class PositionsService {
     });
   }
 
-  async findByUser(userId: string): Promise<Position[]> {
-    const positions = await this.prisma.position.findMany({
-      where: { userId, deletedAt: null },
-    });
+  async findByUser(userId: string, assetType?: string): Promise<Position[]> {
+    const where: Record<string, unknown> = { userId, deletedAt: null };
+    if (assetType) where.assetType = assetType;
+    const positions = await this.prisma.position.findMany({ where });
     return positions.filter(
       (p) => !new Decimal(p.totalQuantity.toString()).isZero(),
     );

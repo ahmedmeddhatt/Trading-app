@@ -36,7 +36,7 @@ export class StocksController {
     return this.stocksService.getHistory(
       symbol.toUpperCase(),
       from ? new Date(from) : undefined,
-      to ? new Date(to) : undefined,
+      to ? new Date(to + 'T23:59:59.999Z') : undefined,
     );
   }
 

@@ -162,12 +162,17 @@ export class StocksController {
       where.pe = { ...((where.pe as object) ?? {}), lte: parseFloat(maxPE) };
 
     const [stocks, total] = await Promise.all([
-      this.prisma.stock.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { symbol: 'asc' },
-      }),
+      this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT symbol, name, sector, market_cap AS "marketCap", pe, updated_at AS "updatedAt"
+         FROM stocks
+         WHERE TRUE
+         ${search ? `AND (symbol ILIKE $1 OR name ILIKE $1)` : ''}
+         ${minPE ? `AND pe >= ${parseFloat(minPE)}` : ''}
+         ${maxPE ? `AND pe <= ${parseFloat(maxPE)}` : ''}
+         ORDER BY CASE WHEN symbol ~ '^[a-zA-Z]' THEN 0 ELSE 1 END, symbol ASC
+         LIMIT ${take} OFFSET ${skip}`,
+        ...(search ? [`%${search}%`] : []),
+      ),
       this.prisma.stock.count({ where }),
     ]);
 
@@ -226,22 +231,127 @@ export class StocksController {
       ? new Date(to + 'T23:59:59.999Z')
       : new Date('9999-12-31');
 
-    const rows = await this.prisma.$queryRaw<
-      Array<{ price: number; timestamp: Date }>
-    >`
-      SELECT price::float8, timestamp
-      FROM stock_price_history
-      WHERE symbol = ${sym}
-        AND timestamp >= ${fromDate}
-        AND timestamp <= ${toDate}
-      ORDER BY timestamp ASC
-      LIMIT 500
-    `;
-    return rows.map((r) => ({
+    const [rows, priceRaw] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ price: number; timestamp: Date }>>`
+        SELECT price::float8, timestamp
+        FROM stock_price_history
+        WHERE symbol = ${sym}
+          AND timestamp >= ${fromDate}
+          AND timestamp <= ${toDate}
+        ORDER BY timestamp ASC
+        LIMIT 500
+      `,
+      this.redis.hget('market:prices', sym),
+    ]);
+
+    const dbPoints = rows.map((r) => ({
       symbol: sym,
       timestamp: r.timestamp.toISOString(),
       price: r.price,
     }));
+
+    // Check if our DB covers the requested range
+    const earliestDb = dbPoints.length
+      ? new Date(dbPoints[0].timestamp)
+      : null;
+    let externalPoints: typeof dbPoints = [];
+
+    // If DB doesn't cover the start of the requested range, fill from Yahoo Finance
+    if (!earliestDb || earliestDb.getTime() - fromDate.getTime() > 2 * 86_400_000) {
+      const gapEnd = earliestDb
+        ? new Date(earliestDb.getTime() - 86_400_000)
+        : toDate;
+      externalPoints = await this.fetchYahooHistory(sym, fromDate, gapEnd);
+    }
+
+    // Merge: external first, then DB (no duplicate dates)
+    const seenDates = new Set<string>();
+    const merged: typeof dbPoints = [];
+
+    for (const p of externalPoints) {
+      const d = p.timestamp.slice(0, 10);
+      if (!seenDates.has(d)) {
+        seenDates.add(d);
+        merged.push(p);
+      }
+    }
+    for (const p of dbPoints) {
+      const d = p.timestamp.slice(0, 10);
+      if (!seenDates.has(d)) {
+        seenDates.add(d);
+        merged.push(p);
+      }
+    }
+
+    // Append current live price as latest data point
+    if (priceRaw) {
+      try {
+        const p = JSON.parse(priceRaw) as { price?: number; timestamp?: string | number };
+        if (p.price != null) {
+          const liveTs = p.timestamp
+            ? new Date(p.timestamp as number).toISOString()
+            : new Date().toISOString();
+          const lastTs = merged.length ? merged[merged.length - 1].timestamp : null;
+          if (!lastTs || new Date(liveTs).getTime() - new Date(lastTs).getTime() > 60_000) {
+            merged.push({ symbol: sym, timestamp: liveTs, price: p.price });
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    return merged;
+  }
+
+  /** Fetch daily close prices from Yahoo Finance for the missing date range */
+  private async fetchYahooHistory(
+    symbol: string,
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ symbol: string; timestamp: string; price: number }>> {
+    const yahooSymbol = symbol.startsWith('.')
+      ? `%5E${symbol.slice(1)}.CA`
+      : `${symbol}.CA`;
+    const period1 = Math.floor(from.getTime() / 1000);
+    const period2 = Math.floor(to.getTime() / 1000);
+
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?period1=${period1}&period2=${period2}&interval=1d`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) return [];
+
+      const json = (await res.json()) as {
+        chart?: {
+          result?: Array<{
+            timestamp?: number[];
+            indicators?: { quote?: Array<{ close?: (number | null)[] }> };
+          }>;
+        };
+      };
+
+      const result = json.chart?.result?.[0];
+      if (!result?.timestamp || !result.indicators?.quote?.[0]?.close) return [];
+
+      const timestamps = result.timestamp;
+      const closes = result.indicators.quote[0].close;
+      const points: Array<{ symbol: string; timestamp: string; price: number }> = [];
+
+      for (let i = 0; i < timestamps.length; i++) {
+        const price = closes[i];
+        if (price == null || price <= 0) continue;
+        points.push({
+          symbol,
+          timestamp: new Date(timestamps[i] * 1000).toISOString(),
+          price,
+        });
+      }
+
+      return points;
+    } catch {
+      return [];
+    }
   }
 
   @Get(':symbol')

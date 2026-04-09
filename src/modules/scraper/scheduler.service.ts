@@ -198,6 +198,19 @@ export class SchedulerService implements OnModuleInit {
     this.goldTimer = setTimeout(() => void this.runGoldPriceLoop(), delay);
   }
 
+  async forceGoldScrape(): Promise<void> {
+    if (this.goldTimer) {
+      clearTimeout(this.goldTimer);
+      this.goldTimer = null;
+    }
+    await this.fetchGoldPrices();
+    const { totalMinutes } = cairoTime();
+    const isActive =
+      totalMinutes >= GOLD_ACTIVE_START && totalMinutes <= GOLD_ACTIVE_END;
+    const delay = isActive ? GOLD_DELAY_ACTIVE : GOLD_DELAY_INACTIVE;
+    this.goldTimer = setTimeout(() => void this.runGoldPriceLoop(), delay);
+  }
+
   private async fetchGoldPrices(): Promise<void> {
     try {
       this.logger.log('gold-scraper: fetching gold prices');
@@ -310,7 +323,6 @@ export class SchedulerService implements OnModuleInit {
 
   /**
    * Checks if it's time for the daily snapshot (once per day after market close).
-   * Only hits Redis when it's actually time to archive — the time check is pure CPU.
    */
   private async checkDailyArchive(): Promise<void> {
     const { hours } = cairoTime();
@@ -332,7 +344,6 @@ export class SchedulerService implements OnModuleInit {
 
   async runArchiver(): Promise<void> {
     const todayStr = new Date().toISOString().slice(0, 10);
-    // Prevent duplicate archives for same day (first-scrape + daily check)
     if (this.lastArchiveDate === todayStr) return;
 
     try {

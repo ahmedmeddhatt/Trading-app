@@ -30,6 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       email: user.email,
       name: user.name,
       investmentHorizon: user.investmentHorizon,
+      tradingMode: user.tradingMode,
     };
   }
 }

@@ -164,4 +164,97 @@ export class TransactionsService {
       `Transaction soft-deleted: ${transactionId} | ${symbol} | position recalculated`,
     );
   }
+
+  /**
+   * Recalculate a position by replaying all non-deleted transactions for a symbol.
+   * Fixes data inconsistencies without deleting any transaction.
+   */
+  async recalculatePosition(userId: string, symbol: string): Promise<void> {
+    await this.prisma.$transaction(async (prisma) => {
+      // Soft-delete all existing realized gains (will be recalculated)
+      await prisma.realizedGain.updateMany({
+        where: { userId, symbol, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+
+      // Replay all remaining transactions chronologically
+      const remaining = await prisma.transaction.findMany({
+        where: { userId, symbol, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      let qty = new Decimal(0);
+      let invested = new Decimal(0);
+      let avgPrice = new Decimal(0);
+
+      for (const t of remaining) {
+        const tQty = new Decimal(t.quantity.toString());
+        const tPx = new Decimal(t.price.toString());
+        const tFees = new Decimal((t as any).fees?.toString() ?? '0');
+
+        if (t.type === 'BUY') {
+          const cost = tQty.mul(tPx).add(tFees);
+          qty = qty.add(tQty);
+          invested = invested.add(cost);
+          avgPrice = qty.isZero() ? new Decimal(0) : invested.div(qty);
+        } else {
+          const profit = tPx.sub(avgPrice).mul(tQty).sub(tFees);
+          await prisma.realizedGain.create({
+            data: {
+              userId,
+              symbol,
+              quantity: tQty.toFixed(8),
+              sellPrice: tPx.toFixed(8),
+              avgPrice: avgPrice.toFixed(8),
+              profit: profit.toFixed(8),
+              fees: tFees.toFixed(8),
+              createdAt: t.createdAt,
+            },
+          });
+          qty = qty.sub(tQty);
+          if (qty.isNegative()) qty = new Decimal(0);
+          if (qty.isZero()) {
+            invested = new Decimal(0);
+          } else {
+            invested = invested.sub(tQty.mul(avgPrice)).sub(tFees);
+          }
+        }
+      }
+
+      const position = await prisma.position.findUnique({
+        where: { userId_symbol: { userId, symbol } },
+      });
+
+      if (remaining.length === 0) {
+        if (position) {
+          await prisma.position.update({
+            where: { userId_symbol: { userId, symbol } },
+            data: { deletedAt: new Date() },
+          });
+        }
+      } else if (position) {
+        await prisma.position.update({
+          where: { userId_symbol: { userId, symbol } },
+          data: {
+            totalQuantity: qty.toFixed(8),
+            averagePrice: avgPrice.toFixed(8),
+            totalInvested: invested.toFixed(8),
+            deletedAt: null,
+          },
+        });
+      } else if (qty.greaterThan(0)) {
+        await prisma.position.create({
+          data: {
+            userId,
+            symbol,
+            totalQuantity: qty.toFixed(8),
+            averagePrice: avgPrice.toFixed(8),
+            totalInvested: invested.toFixed(8),
+          },
+        });
+      }
+    });
+
+    this.logger.log(`Position recalculated: ${userId} | ${symbol}`);
+  }
 }

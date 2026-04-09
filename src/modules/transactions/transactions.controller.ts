@@ -21,4 +21,13 @@ export class TransactionsController {
     await this.transactionsService.softDelete(id, userId);
     return { deleted: true };
   }
+
+  @Post('recalculate/:userId/:symbol')
+  async recalculate(
+    @Param('userId') userId: string,
+    @Param('symbol') symbol: string,
+  ) {
+    await this.transactionsService.recalculatePosition(userId, symbol.toUpperCase());
+    return { recalculated: true };
+  }
 }

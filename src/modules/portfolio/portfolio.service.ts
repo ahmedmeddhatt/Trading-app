@@ -27,12 +27,46 @@ export class PortfolioService {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  private priceKey(assetType?: string): string {
+    return assetType === 'GOLD' ? 'market:gold:prices' : 'market:prices';
+  }
+
+  private assetFilter(assetType?: string): Record<string, string> {
+    return assetType ? { assetType } : {};
+  }
+
+  private parseLivePriceGold(
+    rawPrices: Record<string, string>,
+    symbol: string,
+  ): Decimal | null {
+    try {
+      const parsed = rawPrices?.[symbol]
+        ? (JSON.parse(rawPrices[symbol]) as { sellPrice?: number })
+        : null;
+      return parsed?.sellPrice != null ? new Decimal(parsed.sellPrice) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private getLivePrice(
+    rawPrices: Record<string, string>,
+    symbol: string,
+    assetType?: string,
+  ): Decimal | null {
+    return assetType === 'GOLD'
+      ? this.parseLivePriceGold(rawPrices, symbol)
+      : this.parseLivePrice(rawPrices, symbol);
+  }
+
   private parseLivePrice(
     rawPrices: Record<string, string>,
     symbol: string,
   ): Decimal | null {
     try {
-      const parsed = rawPrices?.[symbol] ? JSON.parse(rawPrices[symbol]) : null;
+      const parsed = rawPrices?.[symbol]
+        ? (JSON.parse(rawPrices[symbol]) as { price?: number })
+        : null;
       return parsed?.price != null ? new Decimal(parsed.price) : null;
     } catch {
       return null;
@@ -42,11 +76,22 @@ export class PortfolioService {
   private parseLivePriceFull(
     rawPrices: Record<string, string>,
     symbol: string,
+    assetType?: string,
   ) {
     try {
-      const parsed = rawPrices?.[symbol] ? JSON.parse(rawPrices[symbol]) : null;
+      const parsed = rawPrices?.[symbol]
+        ? (JSON.parse(rawPrices[symbol]) as {
+            price?: number;
+            sellPrice?: number;
+            timestamp?: string;
+          })
+        : null;
+      const price =
+        assetType === 'GOLD'
+          ? (parsed?.sellPrice ?? null)
+          : (parsed?.price ?? null);
       return {
-        price: parsed?.price ?? null,
+        price,
         lastPriceUpdate: parsed?.timestamp ?? null,
       };
     } catch {
@@ -56,8 +101,11 @@ export class PortfolioService {
 
   // ── Summary ───────────────────────────────────────────────────────────────
 
-  async getPortfolioSummary(userId: string): Promise<PortfolioSummary> {
-    const positions = await this.positionsService.findByUser(userId);
+  async getPortfolioSummary(
+    userId: string,
+    assetType?: string,
+  ): Promise<PortfolioSummary> {
+    const positions = await this.positionsService.findByUser(userId, assetType);
     const totalInvested = positions.reduce(
       (sum, pos) => sum.add(pos.totalInvested),
       new Decimal(0),
@@ -77,7 +125,12 @@ export class PortfolioService {
 
   // ── Analytics (enhanced) ──────────────────────────────────────────────────
 
-  async getAnalytics(userId: string, fromDate?: Date, toDate?: Date) {
+  async getAnalytics(
+    userId: string,
+    fromDate?: Date,
+    toDate?: Date,
+    assetType?: string,
+  ) {
     const dateFilter =
       fromDate || toDate
         ? {
@@ -88,18 +141,23 @@ export class PortfolioService {
 
     const [positions, realizedGains, rawPrices, txGroups, allTransactions] =
       await Promise.all([
-        this.positionsService.findByUser(userId),
+        this.positionsService.findByUser(userId, assetType),
         this.prisma.realizedGain.findMany({
           where: {
             userId,
             deletedAt: null,
+            ...this.assetFilter(assetType),
             ...(dateFilter ? { createdAt: dateFilter } : {}),
           },
         }),
-        this.redis.hgetall('market:prices'),
+        this.redis.hgetall(this.priceKey(assetType)),
         (this.prisma.transaction as any).groupBy({
           by: ['symbol'],
-          where: { userId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+          where: {
+            userId,
+            ...this.assetFilter(assetType),
+            ...(dateFilter ? { createdAt: dateFilter } : {}),
+          },
           _sum: { fees: true },
           _min: { createdAt: true },
         }) as Promise<
@@ -110,7 +168,7 @@ export class PortfolioService {
           }[]
         >,
         this.prisma.transaction.findMany({
-          where: { userId, deletedAt: null },
+          where: { userId, deletedAt: null, ...this.assetFilter(assetType) },
           orderBy: { createdAt: 'asc' },
           select: {
             symbol: true,
@@ -204,6 +262,7 @@ export class PortfolioService {
       const { price, lastPriceUpdate } = this.parseLivePriceFull(
         rawPrices,
         pos.symbol,
+        assetType,
       );
       const currPx = price != null ? new Decimal(price) : null;
       const unrealizedRaw = currPx ? currPx.sub(avgPx).mul(qty) : null;
@@ -356,6 +415,7 @@ export class PortfolioService {
       where: { id: txId, userId, deletedAt: null },
     });
     if (!tx) throw new NotFoundException('Transaction not found');
+    const assetType = (tx as unknown as { assetType?: string }).assetType;
 
     const [priceAtTradeRow, allSymbolTxns, position, realizedGains, rawPrices] =
       await Promise.all([
@@ -374,12 +434,13 @@ export class PortfolioService {
         this.prisma.realizedGain.findMany({
           where: { userId, symbol: tx.symbol, deletedAt: null },
         }),
-        this.redis.hgetall('market:prices'),
+        this.redis.hgetall(this.priceKey(assetType)),
       ]);
 
     const { price: currentPrice } = this.parseLivePriceFull(
       rawPrices,
       tx.symbol,
+      assetType,
     );
 
     // costBasis.beforeTrade: replay BUYs before this tx
@@ -518,6 +579,7 @@ export class PortfolioService {
   // ── Position Detail (Feature 2) ───────────────────────────────────────────
 
   async getPositionDetail(userId: string, symbol: string) {
+    const assetType = symbol.startsWith('GOLD_') ? 'GOLD' : 'STOCK';
     const [position, txns, realizedGains, priceHistory, rawPrices] =
       await Promise.all([
         this.prisma.position.findFirst({
@@ -537,14 +599,18 @@ export class PortfolioService {
           select: { price: true, timestamp: true },
           take: 500,
         }),
-        this.redis.hgetall('market:prices'),
+        this.redis.hgetall(this.priceKey(assetType)),
       ]);
 
     // Reconstruct from transactions if position row doesn't exist
     if (!position && txns.length === 0)
       throw new NotFoundException(`No position found for ${symbol}`);
 
-    const { price: currentPrice } = this.parseLivePriceFull(rawPrices, symbol);
+    const { price: currentPrice } = this.parseLivePriceFull(
+      rawPrices,
+      symbol,
+      assetType,
+    );
 
     let qty: Decimal;
     let avgPx: Decimal;
@@ -784,9 +850,20 @@ export class PortfolioService {
 
   async getTransactionsMaster(
     userId: string,
-    filters: { symbol?: string; type?: string; from?: string; to?: string },
+    filters: {
+      symbol?: string;
+      type?: string;
+      from?: string;
+      to?: string;
+      assetType?: string;
+    },
   ) {
-    const where: any = { userId, deletedAt: null };
+    const assetType = filters.assetType;
+    const where: any = {
+      userId,
+      deletedAt: null,
+      ...this.assetFilter(assetType),
+    };
     if (filters.symbol) where.symbol = filters.symbol.toUpperCase();
     if (filters.type) where.type = filters.type.toUpperCase();
     if (filters.from || filters.to) {
@@ -800,7 +877,9 @@ export class PortfolioService {
         where,
         orderBy: { createdAt: 'asc' },
       }),
-      this.prisma.realizedGain.findMany({ where: { userId, deletedAt: null } }),
+      this.prisma.realizedGain.findMany({
+        where: { userId, deletedAt: null, ...this.assetFilter(assetType) },
+      }),
     ]);
 
     let runningBalance = new Decimal(0);
@@ -869,17 +948,22 @@ export class PortfolioService {
 
   // ── Risk Analytics (Feature 4) ────────────────────────────────────────────
 
-  async getRiskAnalytics(userId: string, fromDate?: Date, toDate?: Date) {
+  async getRiskAnalytics(
+    userId: string,
+    fromDate?: Date,
+    toDate?: Date,
+    assetType?: string,
+  ) {
     const [positions, rawPrices] = await Promise.all([
-      this.positionsService.findByUser(userId),
-      this.redis.hgetall('market:prices'),
+      this.positionsService.findByUser(userId, assetType),
+      this.redis.hgetall(this.priceKey(assetType)),
     ]);
 
     let totalPortfolioValue = new Decimal(0);
     const items = positions.map((pos) => {
       const qty = new Decimal(pos.totalQuantity.toString());
       const avgPx = new Decimal(pos.averagePrice.toString());
-      const currPx = this.parseLivePrice(rawPrices, pos.symbol);
+      const currPx = this.getLivePrice(rawPrices, pos.symbol, assetType);
       const effectivePx = currPx ?? avgPx;
       const value = qty.mul(effectivePx);
       const unrealizedPnL = currPx
@@ -919,7 +1003,12 @@ export class PortfolioService {
     // max drawdown from timeline
     const tlFrom = fromDate ?? new Date(Date.now() - 90 * 86400000);
     const tlTo = toDate ?? new Date();
-    const timelineData = await this.getTimeline(userId, tlFrom, tlTo);
+    const timelineData = await this.getTimeline(
+      userId,
+      tlFrom,
+      tlTo,
+      assetType,
+    );
     let drawdown = {
       maxDrawdownPct: '0.00',
       maxDrawdownAbs: '0.00',
@@ -985,7 +1074,7 @@ export class PortfolioService {
 
   // ── P&L Calendar (Feature 5) ──────────────────────────────────────────────
 
-  async getPnLCalendar(userId: string, year: number) {
+  async getPnLCalendar(userId: string, year: number, assetType?: string) {
     const rows = await this.prisma.$queryRaw<
       { date: Date; pnl: string; trades: bigint }[]
     >`
@@ -995,6 +1084,7 @@ export class PortfolioService {
       FROM   realized_gains
       WHERE  user_id = ${userId}
         AND  EXTRACT(YEAR FROM created_at) = ${year}
+        AND  asset_type = ${assetType ?? 'STOCK'}::"AssetType"
       GROUP  BY 1
       ORDER  BY 1
     `;
@@ -1009,9 +1099,9 @@ export class PortfolioService {
 
   // ── Closed Trade Scoring (Feature 8) ─────────────────────────────────────
 
-  async getClosedTrades(userId: string) {
+  async getClosedTrades(userId: string, assetType?: string) {
     const gains = await this.prisma.realizedGain.findMany({
-      where: { userId, deletedAt: null },
+      where: { userId, deletedAt: null, ...this.assetFilter(assetType) },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -1105,8 +1195,13 @@ export class PortfolioService {
 
   // ── Smart Insights (Feature 9) ────────────────────────────────────────────
 
-  async getInsights(userId: string) {
-    const analytics = await this.getAnalytics(userId);
+  async getInsights(userId: string, assetType?: string) {
+    const analytics = await this.getAnalytics(
+      userId,
+      undefined,
+      undefined,
+      assetType,
+    );
     const insights: {
       type: string;
       icon: string;
@@ -1149,11 +1244,11 @@ export class PortfolioService {
     // concentration warning
     const positions = analytics.positions as any[];
     if (positions.length >= 3) {
-      const rawPrices = await this.redis.hgetall('market:prices');
+      const rawPrices = await this.redis.hgetall(this.priceKey(assetType));
       let totalVal = new Decimal(0);
       const vals = positions.map((p) => {
         const px =
-          this.parseLivePrice(rawPrices, p.symbol) ??
+          this.getLivePrice(rawPrices, p.symbol, assetType) ??
           new Decimal(p.averagePrice);
         const v = new Decimal(p.totalQuantity).mul(px);
         totalVal = totalVal.add(v);
@@ -1257,8 +1352,8 @@ export class PortfolioService {
 
   // ── Portfolio Timeline ────────────────────────────────────────────────────
 
-  async getTimeline(userId: string, from: Date, to: Date) {
-    const positions = await this.positionsService.findByUser(userId);
+  async getTimeline(userId: string, from: Date, to: Date, assetType?: string) {
+    const positions = await this.positionsService.findByUser(userId, assetType);
     if (!positions.length) return { timeline: [] };
 
     const symbols = positions.map((p) => p.symbol);
@@ -1272,7 +1367,7 @@ export class PortfolioService {
     // Build cumulative invested timeline from ALL transactions (including before `from`)
     // so we know the invested amount at each point in time
     const allTxns = await this.prisma.transaction.findMany({
-      where: { userId, deletedAt: null },
+      where: { userId, deletedAt: null, ...this.assetFilter(assetType) },
       orderBy: { createdAt: 'asc' },
       select: {
         symbol: true,
@@ -1354,12 +1449,12 @@ export class PortfolioService {
 
     // Always append current live prices from Redis as the "now" data point
     // so the chart has at least 1 point even when price history is sparse
-    const rawPrices = await this.redis.hgetall('market:prices');
+    const rawPrices = await this.redis.hgetall(this.priceKey(assetType));
     if (rawPrices) {
       let currentValue = new Decimal(0);
       let hasAnyPrice = false;
       for (const symbol of symbols) {
-        const px = this.parseLivePrice(rawPrices, symbol);
+        const px = this.getLivePrice(rawPrices, symbol, assetType);
         if (px) {
           currentValue = currentValue.add(px.mul(qtyBySymbol[symbol]));
           hasAnyPrice = true;
@@ -1465,7 +1560,12 @@ export class PortfolioService {
 
   // ── Realized Gains List ───────────────────────────────────────────────────
 
-  async getRealizedGainsList(userId: string, fromDate?: Date, toDate?: Date) {
+  async getRealizedGainsList(
+    userId: string,
+    fromDate?: Date,
+    toDate?: Date,
+    assetType?: string,
+  ) {
     const dateFilter =
       fromDate || toDate
         ? {
@@ -1478,12 +1578,18 @@ export class PortfolioService {
         where: {
           userId,
           deletedAt: null,
+          ...this.assetFilter(assetType),
           ...(dateFilter ? { createdAt: dateFilter } : {}),
         },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.transaction.findMany({
-        where: { userId, type: TransactionType.BUY, deletedAt: null },
+        where: {
+          userId,
+          type: TransactionType.BUY,
+          deletedAt: null,
+          ...this.assetFilter(assetType),
+        },
         orderBy: { createdAt: 'asc' },
         select: { symbol: true, createdAt: true },
       }),
@@ -1582,11 +1688,11 @@ export class PortfolioService {
 
   // ── Portfolio Allocation ──────────────────────────────────────────────────
 
-  async getAllocation(userId: string) {
-    const positions = await this.positionsService.findByUser(userId);
+  async getAllocation(userId: string, assetType?: string) {
+    const positions = await this.positionsService.findByUser(userId, assetType);
     if (!positions.length) return { bySymbol: [] };
 
-    const rawPrices = await this.redis.hgetall('market:prices');
+    const rawPrices = await this.redis.hgetall(this.priceKey(assetType));
 
     let totalValue = new Decimal(0);
     const items: {
@@ -1600,7 +1706,7 @@ export class PortfolioService {
     for (const pos of positions) {
       const qty = new Decimal(pos.totalQuantity.toString());
       const avgPx = new Decimal(pos.averagePrice.toString());
-      const currPx = this.parseLivePrice(rawPrices, pos.symbol);
+      const currPx = this.getLivePrice(rawPrices, pos.symbol, assetType);
       const effectivePx = currPx ?? avgPx;
       const value = qty.mul(effectivePx);
       totalValue = totalValue.add(value);
@@ -1626,7 +1732,12 @@ export class PortfolioService {
 
   // ── Closed Positions (full history of exited trades) ─────────────────────
 
-  async getClosedPositions(userId: string, fromDate?: Date, toDate?: Date) {
+  async getClosedPositions(
+    userId: string,
+    fromDate?: Date,
+    toDate?: Date,
+    assetType?: string,
+  ) {
     const dateFilter =
       fromDate || toDate
         ? {
@@ -1635,15 +1746,16 @@ export class PortfolioService {
           }
         : undefined;
     const [positions, txns, gains] = await Promise.all([
-      this.positionsService.findByUser(userId),
+      this.positionsService.findByUser(userId, assetType),
       this.prisma.transaction.findMany({
-        where: { userId, deletedAt: null },
+        where: { userId, deletedAt: null, ...this.assetFilter(assetType) },
         orderBy: { createdAt: 'asc' },
       }),
       this.prisma.realizedGain.findMany({
         where: {
           userId,
           deletedAt: null,
+          ...this.assetFilter(assetType),
           ...(dateFilter ? { createdAt: dateFilter } : {}),
         },
         orderBy: { createdAt: 'asc' },

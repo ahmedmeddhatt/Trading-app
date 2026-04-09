@@ -111,8 +111,32 @@ export class GoldService {
     const categories = await this.prisma.goldCategory.findMany();
     const prices = await this.getAllGoldPrices();
 
+    // Get yesterday's closing prices for daily change calculation
+    const yesterdayStart = new Date();
+    yesterdayStart.setUTCHours(0, 0, 0, 0);
+    yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+    const yesterdayEnd = new Date(yesterdayStart);
+    yesterdayEnd.setUTCHours(23, 59, 59, 999);
+
+    const yesterdaySnapshots = await this.prisma.goldPriceHistory.findMany({
+      where: { timestamp: { gte: yesterdayStart, lte: yesterdayEnd } },
+      orderBy: { timestamp: 'desc' },
+    });
+    const yesterdayPrices = new Map<string, number>();
+    for (const snap of yesterdaySnapshots) {
+      if (!yesterdayPrices.has(snap.categoryId)) {
+        yesterdayPrices.set(snap.categoryId, Number(snap.sellPrice));
+      }
+    }
+
     return categories.map((cat) => {
       const live = prices[cat.id];
+      const prevSell = yesterdayPrices.get(cat.id);
+      const changePercent =
+        live?.sellPrice && prevSell
+          ? +(((live.sellPrice - prevSell) / prevSell) * 100).toFixed(2)
+          : 0;
+
       return {
         categoryId: cat.id,
         nameAr: cat.nameAr,
@@ -122,7 +146,7 @@ export class GoldService {
         weightGrams: cat.weightGrams?.toString() ?? null,
         buyPrice: live?.buyPrice ?? null,
         sellPrice: live?.sellPrice ?? null,
-        changePercent: live?.changePercent ?? 0,
+        changePercent,
         lastUpdate: live?.timestamp ?? null,
         spread: live
           ? +(

@@ -12,6 +12,7 @@ interface LivePrice {
   price: number;
   changePercent: number;
   timestamp: string;
+  recommendation?: string | null;
 }
 
 @Injectable()
@@ -93,6 +94,7 @@ export class StocksService {
       price: live?.price ?? null,
       changePercent: live?.changePercent ?? null,
       lastUpdate: live?.timestamp ?? null,
+      recommendation: live?.recommendation ?? null,
     };
   }
 
