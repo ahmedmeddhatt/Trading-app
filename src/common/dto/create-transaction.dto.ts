@@ -8,7 +8,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { TransactionType } from '@prisma/client';
+import { TransactionType, AssetType } from '@prisma/client';
 
 export class CreateTransactionDto {
   @IsString()
@@ -21,6 +21,10 @@ export class CreateTransactionDto {
 
   @IsEnum(TransactionType)
   type: TransactionType;
+
+  @IsOptional()
+  @IsEnum(AssetType)
+  assetType?: AssetType;
 
   @IsNumber({ maxDecimalPlaces: 8 })
   @IsPositive()

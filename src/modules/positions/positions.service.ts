@@ -1,16 +1,33 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { TransactionType, Transaction, Position } from '@prisma/client';
 import Decimal from 'decimal.js';
 
 @Injectable()
-export class PositionsService {
+export class PositionsService implements OnModuleInit {
   private readonly logger = new Logger(PositionsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async onModuleInit() {
+    // One-time fix: set assetType=GOLD for positions/realized_gains where symbol starts with GOLD_
+    try {
+      const [posResult, rgResult, txResult] = await Promise.all([
+        this.prisma.$executeRaw`UPDATE positions SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+        this.prisma.$executeRaw`UPDATE realized_gains SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+        this.prisma.$executeRaw`UPDATE transactions SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+      ]);
+      if (posResult > 0 || rgResult > 0 || txResult > 0) {
+        this.logger.log(`Data fix: updated ${posResult} positions, ${rgResult} realized_gains, ${txResult} transactions to assetType=GOLD`);
+      }
+    } catch (e) {
+      this.logger.warn(`Data fix skipped: ${(e as Error).message}`);
+    }
+  }
+
   async handleTransaction(transaction: Transaction): Promise<Position> {
     const { userId, symbol, type } = transaction;
+    const assetType = (transaction as any).assetType ?? 'STOCK';
     const qty = new Decimal(transaction.quantity.toString());
     const px = new Decimal(transaction.price.toString());
     // fees exists after migration; fallback to 0 for safety
@@ -44,6 +61,7 @@ export class PositionsService {
                 totalQuantity: qty.toFixed(8),
                 averagePrice: newAvg.toFixed(8),
                 totalInvested: buyCost.toFixed(8),
+                assetType,
                 deletedAt: null,
               },
             });
@@ -56,6 +74,7 @@ export class PositionsService {
             data: {
               userId,
               symbol,
+              assetType,
               totalQuantity: qty.toFixed(8),
               averagePrice: newAvg.toFixed(8),
               totalInvested: buyCost.toFixed(8),
@@ -122,6 +141,7 @@ export class PositionsService {
           data: {
             userId,
             symbol,
+            assetType,
             quantity: qty.toFixed(8),
             sellPrice: px.toFixed(8),
             avgPrice: avgPx.toFixed(8),

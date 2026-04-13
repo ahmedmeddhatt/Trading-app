@@ -22,6 +22,7 @@ export class TransactionsService {
         userId: dto.userId,
         symbol: dto.symbol.toUpperCase(),
         type: dto.type,
+        assetType: dto.assetType ?? 'STOCK',
         quantity: new Decimal(dto.quantity),
         price: new Decimal(dto.price),
         fees: new Decimal(dto.fees ?? 0),
@@ -60,6 +61,7 @@ export class TransactionsService {
     if (tx.deletedAt) throw new Error('Transaction already deleted');
 
     const symbol = tx.symbol;
+    const assetType = (tx as any).assetType ?? 'STOCK';
 
     await this.prisma.$transaction(async (prisma) => {
       // 1. Soft-delete the transaction
@@ -101,6 +103,7 @@ export class TransactionsService {
             data: {
               userId,
               symbol,
+              assetType,
               quantity: tQty.toFixed(8),
               sellPrice: tPx.toFixed(8),
               avgPrice: avgPrice.toFixed(8),
@@ -141,6 +144,7 @@ export class TransactionsService {
             totalQuantity: qty.toFixed(8),
             averagePrice: avgPrice.toFixed(8),
             totalInvested: invested.toFixed(8),
+            assetType,
             deletedAt: null,
           },
         });
@@ -151,6 +155,7 @@ export class TransactionsService {
             data: {
               userId,
               symbol,
+              assetType,
               totalQuantity: qty.toFixed(8),
               averagePrice: avgPrice.toFixed(8),
               totalInvested: invested.toFixed(8),
@@ -183,6 +188,8 @@ export class TransactionsService {
         orderBy: { createdAt: 'asc' },
       });
 
+      const assetType = remaining.length > 0 ? ((remaining[0] as any).assetType ?? 'STOCK') : 'STOCK';
+
       let qty = new Decimal(0);
       let invested = new Decimal(0);
       let avgPrice = new Decimal(0);
@@ -203,6 +210,7 @@ export class TransactionsService {
             data: {
               userId,
               symbol,
+              assetType,
               quantity: tQty.toFixed(8),
               sellPrice: tPx.toFixed(8),
               avgPrice: avgPrice.toFixed(8),
@@ -239,6 +247,7 @@ export class TransactionsService {
             totalQuantity: qty.toFixed(8),
             averagePrice: avgPrice.toFixed(8),
             totalInvested: invested.toFixed(8),
+            assetType,
             deletedAt: null,
           },
         });
@@ -247,6 +256,7 @@ export class TransactionsService {
           data: {
             userId,
             symbol,
+            assetType,
             totalQuantity: qty.toFixed(8),
             averagePrice: avgPrice.toFixed(8),
             totalInvested: invested.toFixed(8),

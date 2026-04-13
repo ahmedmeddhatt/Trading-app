@@ -27,11 +27,11 @@
     "symbol": "4170",
     "name": "Tourism Enterprise Co.",
     "sector": "Unknown",
-    "price": 15.06,
+    "price": 15,
     "marketCap": null,
     "pe": null,
     "valuation": null,
-    "changePercent": -0.26,
+    "changePercent": -0.53,
     "news": [],
     "trending": false
   },
@@ -43,7 +43,7 @@
     "marketCap": null,
     "pe": null,
     "valuation": null,
-    "changePercent": 0,
+    "changePercent": 0.84,
     "news": [],
     "trending": false
   },

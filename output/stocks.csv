@@ -1,8 +1,8 @@
 symbol,name,sector,price,marketCap,pe,valuation,changePercent,trending,newsCount
 .EGX30,"EGX 30","Unknown",49078.6,,,,1,false,0
 .EGX70EWI,"EGX 70 EWI","Unknown",12993.46,,,,0.19,false,0
-4170,"Tourism Enterprise Co.","Unknown",15.06,,,,-0.26,false,0
-9510,"National Building And Marketing Co","Unknown",38.5,,,,0,false,0
+4170,"Tourism Enterprise Co.","Unknown",15,,,,-0.53,false,0
+9510,"National Building And Marketing Co","Unknown",38.5,,,,0.84,false,0
 AALR,"General Co Land Recl Devel Reconst","Unknown",163.98,,,,-0.65,false,0
 ABUK,"Abu Qir Fertilizers and Chemical Industries Co SAE","Unknown",82.11,,,,-0.64,false,0
 ACAMD,"Arab Co for Asset Management and Development","Unknown",1.84,,,,-2.65,false,0

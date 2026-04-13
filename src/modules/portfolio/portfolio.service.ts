@@ -1476,7 +1476,7 @@ export class PortfolioService {
 
     // If still < 2 points, fall back to transaction-based timeline
     if (timeline.length < 2) {
-      const txTimeline = await this.buildTransactionTimeline(userId, from, to);
+      const txTimeline = await this.buildTransactionTimeline(userId, from, to, assetType);
       if (txTimeline.length > 0) {
         const merged = [...timeline, ...txTimeline].sort((a, b) =>
           a.timestamp.localeCompare(b.timestamp),
@@ -1498,11 +1498,12 @@ export class PortfolioService {
     userId: string,
     from: Date,
     to: Date,
+    assetType?: string,
   ): Promise<
     { timestamp: string; totalValue: string; totalInvested: string }[]
   > {
     const allTxns = await this.prisma.transaction.findMany({
-      where: { userId, deletedAt: null },
+      where: { userId, deletedAt: null, ...this.assetFilter(assetType) },
       orderBy: { createdAt: 'asc' },
       select: {
         symbol: true,
