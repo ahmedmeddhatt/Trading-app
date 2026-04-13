@@ -7,6 +7,8 @@ import {
   Param,
   Query,
   BadRequestException,
+  Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { StockStoreService } from './stock-store.service';
 import { RedisWriterService } from './redis-writer.service';
@@ -16,6 +18,8 @@ import { GeminiAnalysisService } from './services/gemini-analysis.service';
 
 @Controller('stocks')
 export class StocksController {
+  private readonly logger = new Logger(StocksController.name);
+
   constructor(
     private readonly stockStore: StockStoreService,
     private readonly redis: RedisWriterService,
@@ -135,6 +139,52 @@ export class StocksController {
         totalSymbols: list.length,
       },
     };
+  }
+
+  @Get('weekly-picks')
+  async weeklyPicks(@Query('lang') lang?: string, @Query('refresh') refresh?: string) {
+    const language = lang === 'ar' ? 'ar' : 'en';
+    const cacheKey = `ai:weekly-picks:${language}`;
+
+    if (refresh !== 'true') {
+      try {
+        const cached = await this.redis.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.expiresAt && new Date(parsed.expiresAt) > new Date()) {
+            this.logger.log(`Returning cached weekly picks (${language})`);
+            return parsed;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Cache read failed: ${(err as Error).message}`);
+      }
+    } else {
+      this.logger.log(`Force refresh requested for weekly picks (${language})`);
+      await this.redis.del(cacheKey, `${cacheKey}:last-good`).catch(() => {});
+    }
+
+    try {
+      this.logger.log(`Generating fresh weekly picks via AI (${language})...`);
+      const result = await this.geminiAnalysis.generateWeeklyPicks(language);
+      const json = JSON.stringify(result);
+      await this.redis.set(cacheKey, json).catch(() => {});
+      await this.redis.set(`${cacheKey}:last-good`, json).catch(() => {});
+      return result;
+    } catch (err) {
+      this.logger.error(`Weekly picks generation failed: ${(err as Error).message}`);
+      // Try last-good fallback
+      try {
+        const fallback = await this.redis.get(`${cacheKey}:last-good`);
+        if (fallback) {
+          this.logger.log('Returning last-good fallback');
+          return JSON.parse(fallback);
+        }
+      } catch {}
+      throw new InternalServerErrorException(
+        `Failed to generate weekly picks: ${(err as Error).message}`,
+      );
+    }
   }
 
   @Get()

@@ -185,6 +185,78 @@ export class GeminiAnalysisService {
     throw new Error('All AI providers failed');
   }
 
+  /** Like callAIChain but with higher token limits for long responses */
+  private async callAIChainLong(
+    prompt: string,
+  ): Promise<{ text: string; provider: string }> {
+    // Try Gemini first (no token limit issue)
+    if (this.genAI) {
+      try {
+        const model = this.genAI.getGenerativeModel({
+          model: 'gemini-2.0-flash',
+          generationConfig: { maxOutputTokens: 8192 },
+        });
+        const result = await model.generateContent(prompt);
+        return { text: result.response.text().trim(), provider: 'Gemini' };
+      } catch (err) {
+        this.logger.warn(`Gemini (long) failed: ${(err as Error).message?.slice(0, 200)}`);
+      }
+    }
+
+    // Fallback providers with higher token limits
+    const groqKey = this.config.get<string>('GROQ_API_KEY');
+    if (groqKey) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            max_tokens: 8192,
+          }),
+        });
+        if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        const json = await res.json();
+        const content = json.choices?.[0]?.message?.content;
+        if (!content) throw new Error('Groq returned empty response');
+        return { text: content.trim(), provider: 'Groq' };
+      } catch (err) {
+        this.logger.warn(`Groq (long) failed: ${(err as Error).message?.slice(0, 200)}`);
+      }
+    }
+
+    const openRouterKey = this.config.get<string>('OPENROUTER_API_KEY');
+    if (openRouterKey) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${openRouterKey}`,
+            'HTTP-Referer': 'https://tradedesk.app',
+          },
+          body: JSON.stringify({
+            model: 'nvidia/nemotron-3-super-120b-a12b:free',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            max_tokens: 8192,
+          }),
+        });
+        if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+        const json = await res.json();
+        const content = json.choices?.[0]?.message?.content;
+        if (!content) throw new Error(`OpenRouter returned empty response: ${JSON.stringify(json).slice(0, 300)}`);
+        return { text: content.trim(), provider: 'OpenRouter' };
+      } catch (err) {
+        this.logger.warn(`OpenRouter (long) failed: ${(err as Error).message?.slice(0, 200)}`);
+      }
+    }
+
+    throw new Error('All AI providers failed for weekly picks');
+  }
+
   async analyzeStock(
     symbol: string,
     horizon: Horizon = 'MID_TERM',
@@ -917,6 +989,154 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
     }
     if (!risks.length) risks.push('Standard market risk applies');
     return risks;
+  }
+
+  async generateWeeklyPicks(lang: 'en' | 'ar' = 'en'): Promise<{
+    generatedAt: string;
+    expiresAt: string;
+    marketCondition: string;
+    picks: any[];
+    top3Summary: string;
+    allocationAdvice: string;
+  }> {
+    if (this.aiProviders.length === 0) {
+      throw new Error('No AI providers available for weekly picks');
+    }
+
+    // Fetch actual stock symbols + live prices so AI uses real data
+    const [allStocks, priceMap] = await Promise.all([
+      this.prisma.stock.findMany({
+        select: { symbol: true, name: true, sector: true },
+        orderBy: { symbol: 'asc' },
+      }),
+      this.redis.hgetall('market:prices'),
+    ]);
+    // Only include stocks with live prices, ultra-compact format
+    const stocksWithPrices: string[] = [];
+    for (const s of allStocks) {
+      const raw = priceMap[s.symbol];
+      if (!raw) continue;
+      try {
+        const p = JSON.parse(raw);
+        if (p.price != null) {
+          stocksWithPrices.push(`${s.symbol}:${p.price}`);
+        }
+      } catch {}
+    }
+    // Compact: just "SYMBOL:price" to minimize tokens
+    const stockList = stocksWithPrices.join(', ');
+    this.logger.log(`Weekly picks prompt includes ${stocksWithPrices.length} stocks with prices (${stockList.length} chars)`);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const prompt = `You are a global technical analyst specializing in the Egyptian Stock Exchange (EGX).
+
+## Your mission:
+
+To conduct a comprehensive and in-depth technical analysis of the Egyptian stock market and provide professional investment recommendations.
+
+## Eligibility criteria (all conditions must be met):
+1. The stock must be available on the Thunder app.
+2. The stock must be near or have recently touched a strong support level.
+3. The stock must be suitable for short-/medium-term trading.
+4. The stock must be Sharia-compliant (Halal - meaning it avoids banks, alcohol, tobacco, and interest).
+5. The current price must be within 3-5% of the support level.
+
+## Date and Context:
+Current Date: ${today}
+
+Analyze the top 10 EGX stocks meeting ALL criteria above.
+
+You MUST respond ONLY with valid JSON (no markdown, no code blocks) in this exact format:
+{
+  "marketCondition": "Bull|Bear|Neutral",
+  "picks": [
+    {
+      "rank": 1,
+      "company": "Company Name",
+      "symbol": "SYMBOL",
+      "sector": "Sector Name",
+      "currentPrice": 0.00,
+      "status": "At Support Level|Near Support Level|Support Level Tested and Price Rebounded",
+      "support": { "s1": 0.00, "s2": 0.00 },
+      "resistance": { "r1": 0.00, "r2": 0.00 },
+      "trend": "Up|Down|Sideways",
+      "pattern": "Pattern name or null",
+      "indicators": {
+        "rsi": 0.00,
+        "rsiStatus": "Oversold|Neutral|Overbought",
+        "macd": "Bullish Crossover|Bearish Crossover|Trending Up|Trending Down|Neutral",
+        "volume": "Accumulation|Distribution|Normal",
+        "ma20": 0.00,
+        "ma50": 0.00
+      },
+      "entry": 0.00,
+      "targets": { "t1": 0.00, "t2": 0.00 },
+      "stopLoss": 0.00,
+      "riskReward": "1:2.5",
+      "timeframe": "Short-term (Weeks)|Medium-term (Months)",
+      "confidence": 8,
+      "catalysts": "Fundamental catalysts supporting the trend",
+      "risks": "Key risks to consider"
+    }
+  ],
+  "top3Summary": "Brief justification for the top 3 stocks for immediate entry",
+  "allocationAdvice": "Portfolio management recommendation with suggested capital allocation"
+}
+
+IMPORTANT:
+- Return exactly 10 stocks ranked by opportunity strength
+- All prices must be realistic current EGP prices for EGX stocks
+- Confidence is a number from 1 to 10
+- Only include Sharia-compliant stocks (no banks, alcohol, tobacco, interest-based businesses)
+- Focus on stocks near strong support levels with good risk-reward ratios
+- You MUST ONLY use symbols from the list below. Do NOT invent symbols or prices.
+- CRITICAL: The list format is SYMBOL:CurrentPrice. Use the exact price as "currentPrice". All support/resistance/entry/target/stopLoss must be realistic relative to that price.
+
+Available EGX stocks with current prices:
+${stockList}
+${lang === 'ar' ? `- IMPORTANT: All text values (company, sector, status, pattern, catalysts, risks, top3Summary, allocationAdvice, macd, volume, rsiStatus, timeframe) MUST be written in Arabic. Only keep symbol names and JSON keys in English.` : ''}`;
+
+    const { text: rawText, provider } = await this.callAIChainLong(prompt);
+    this.logger.log(`Weekly picks generated by ${provider}`);
+
+    const jsonStr = rawText
+      .replace(/^```json?\s*/s, '')
+      .replace(/\s*```\s*$/s, '')
+      .trim();
+    const parsed = JSON.parse(jsonStr);
+
+    // Validate picks against database — remove stocks that don't exist
+    let picks = Array.isArray(parsed.picks) ? parsed.picks.slice(0, 10) : [];
+    if (picks.length > 0) {
+      const symbols = picks.map((p: any) => String(p.symbol).toUpperCase());
+      const existingStocks = await this.prisma.stock.findMany({
+        where: { symbol: { in: symbols } },
+        select: { symbol: true },
+      });
+      const existingSet = new Set(existingStocks.map((s) => s.symbol));
+      const before = picks.length;
+      picks = picks.filter((p: any) => existingSet.has(String(p.symbol).toUpperCase()));
+      if (picks.length < before) {
+        this.logger.warn(
+          `Filtered out ${before - picks.length} non-existent stocks from weekly picks`,
+        );
+      }
+      // Re-rank after filtering
+      picks.forEach((p: any, i: number) => { p.rank = i + 1; });
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    return {
+      generatedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      marketCondition: parsed.marketCondition ?? 'Neutral',
+      picks,
+      top3Summary: String(parsed.top3Summary ?? ''),
+      allocationAdvice: String(parsed.allocationAdvice ?? ''),
+    };
   }
 
   private buildOutlook(signal: string, horizon: Horizon): string {

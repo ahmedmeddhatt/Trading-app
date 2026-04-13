@@ -115,6 +115,11 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
     return this.client.get(key);
   }
 
+  async del(...keys: string[]): Promise<number> {
+    this.monitor.increment('DEL');
+    return this.client.del(...keys);
+  }
+
   onModuleDestroy(): void {
     this.client.disconnect();
   }
