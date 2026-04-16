@@ -1875,4 +1875,15 @@ export class PortfolioService {
       };
     });
   }
+
+  // ── Fix misclassified asset types (GOLD_ symbols saved as STOCK) ──────────
+
+  async fixAssetTypes(userId: string) {
+    const [txResult, posResult, rgResult] = await Promise.all([
+      this.prisma.$executeRaw`UPDATE transactions SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+      this.prisma.$executeRaw`UPDATE positions SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+      this.prisma.$executeRaw`UPDATE realized_gains SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+    ]);
+    return { fixed: { transactions: Number(txResult), positions: Number(posResult), realizedGains: Number(rgResult) } };
+  }
 }

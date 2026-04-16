@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
 import { PortfolioService } from './portfolio.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -176,6 +176,12 @@ export class PortfolioController {
       toDate,
       assetType,
     );
+  }
+
+  @Post(':userId/fix-asset-types')
+  @UseGuards(JwtAuthGuard)
+  fixAssetTypes(@Param('userId') userId: string) {
+    return this.portfolioService.fixAssetTypes(userId);
   }
 
   @Get(':userId/realized-gains')
