@@ -27,7 +27,10 @@ export class TransactionsController {
     @Param('userId') userId: string,
     @Param('symbol') symbol: string,
   ) {
-    await this.transactionsService.recalculatePosition(userId, symbol.toUpperCase());
+    await this.transactionsService.recalculatePosition(
+      userId,
+      symbol.toUpperCase(),
+    );
     return { recalculated: true };
   }
 }

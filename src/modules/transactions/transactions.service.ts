@@ -188,7 +188,10 @@ export class TransactionsService {
         orderBy: { createdAt: 'asc' },
       });
 
-      const assetType = remaining.length > 0 ? ((remaining[0] as any).assetType ?? 'STOCK') : 'STOCK';
+      const assetType =
+        remaining.length > 0
+          ? ((remaining[0] as any).assetType ?? 'STOCK')
+          : 'STOCK';
 
       let qty = new Decimal(0);
       let invested = new Decimal(0);

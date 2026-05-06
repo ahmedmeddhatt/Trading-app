@@ -188,73 +188,314 @@ export class GeminiAnalysisService {
   /** Like callAIChain but with higher token limits for long responses */
   private async callAIChainLong(
     prompt: string,
-  ): Promise<{ text: string; provider: string }> {
+  ): Promise<{ text: string; provider: string; model: string }> {
     // Try Gemini first (no token limit issue)
     if (this.genAI) {
+      const geminiModelId = 'gemini-2.0-flash';
       try {
         const model = this.genAI.getGenerativeModel({
-          model: 'gemini-2.0-flash',
+          model: geminiModelId,
           generationConfig: { maxOutputTokens: 8192 },
         });
         const result = await model.generateContent(prompt);
-        return { text: result.response.text().trim(), provider: 'Gemini' };
+        return {
+          text: result.response.text().trim(),
+          provider: 'Gemini',
+          model: geminiModelId,
+        };
       } catch (err) {
-        this.logger.warn(`Gemini (long) failed: ${(err as Error).message?.slice(0, 200)}`);
+        this.logger.warn(
+          `Gemini (long) failed: ${(err as Error).message?.slice(0, 200)}`,
+        );
       }
     }
 
     // Fallback providers with higher token limits
     const groqKey = this.config.get<string>('GROQ_API_KEY');
     if (groqKey) {
+      const groqModelId = 'llama-3.3-70b-versatile';
       try {
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3,
-            max_tokens: 8192,
-          }),
-        });
-        if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        const res = await fetch(
+          'https://api.groq.com/openai/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${groqKey}`,
+            },
+            body: JSON.stringify({
+              model: groqModelId,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.3,
+              max_tokens: 8192,
+            }),
+          },
+        );
+        if (!res.ok)
+          throw new Error(
+            `Groq ${res.status}: ${(await res.text()).slice(0, 300)}`,
+          );
         const json = await res.json();
         const content = json.choices?.[0]?.message?.content;
         if (!content) throw new Error('Groq returned empty response');
-        return { text: content.trim(), provider: 'Groq' };
+        return { text: content.trim(), provider: 'Groq', model: groqModelId };
       } catch (err) {
-        this.logger.warn(`Groq (long) failed: ${(err as Error).message?.slice(0, 200)}`);
+        this.logger.warn(
+          `Groq (long) failed: ${(err as Error).message?.slice(0, 200)}`,
+        );
       }
     }
 
     const openRouterKey = this.config.get<string>('OPENROUTER_API_KEY');
     if (openRouterKey) {
+      const openRouterModelId = 'nvidia/nemotron-3-super-120b-a12b:free';
       try {
-        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openRouterKey}`,
-            'HTTP-Referer': 'https://tradedesk.app',
+        const res = await fetch(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openRouterKey}`,
+              'HTTP-Referer': 'https://tradedesk.app',
+            },
+            body: JSON.stringify({
+              model: openRouterModelId,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.3,
+              max_tokens: 8192,
+            }),
           },
-          body: JSON.stringify({
-            model: 'nvidia/nemotron-3-super-120b-a12b:free',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3,
-            max_tokens: 8192,
-          }),
-        });
-        if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+        );
+        if (!res.ok)
+          throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
         const json = await res.json();
         const content = json.choices?.[0]?.message?.content;
-        if (!content) throw new Error(`OpenRouter returned empty response: ${JSON.stringify(json).slice(0, 300)}`);
-        return { text: content.trim(), provider: 'OpenRouter' };
+        if (!content)
+          throw new Error(
+            `OpenRouter returned empty response: ${JSON.stringify(json).slice(0, 300)}`,
+          );
+        return {
+          text: content.trim(),
+          provider: 'OpenRouter',
+          model: openRouterModelId,
+        };
       } catch (err) {
-        this.logger.warn(`OpenRouter (long) failed: ${(err as Error).message?.slice(0, 200)}`);
+        this.logger.warn(
+          `OpenRouter (long) failed: ${(err as Error).message?.slice(0, 200)}`,
+        );
       }
     }
 
     throw new Error('All AI providers failed for weekly picks');
+  }
+
+  /**
+   * Calls all configured providers in parallel via Promise.allSettled.
+   * Each provider gets the same prompt and is asked to return its own JSON-shaped
+   * answer. Used by daily multi-provider weekly picks generation — distributes
+   * the rate-limit pressure (one call per provider per day) and gives the user
+   * cross-validation across models.
+   */
+  private async callAIChainParallel(
+    prompt: string,
+  ): Promise<
+    Array<
+      | { status: 'ok'; provider: string; model: string; text: string }
+      | { status: 'failed'; provider: string; model?: string; error: string }
+    >
+  > {
+    const calls: Array<
+      Promise<
+        | { status: 'ok'; provider: string; model: string; text: string }
+        | { status: 'failed'; provider: string; model?: string; error: string }
+      >
+    > = [];
+
+    // Gemini
+    if (this.genAI) {
+      const geminiModelId = 'gemini-2.0-flash';
+      calls.push(
+        (async () => {
+          try {
+            const model = this.genAI!.getGenerativeModel({
+              model: geminiModelId,
+              generationConfig: { maxOutputTokens: 8192 },
+            });
+            const result = await model.generateContent(prompt);
+            return {
+              status: 'ok' as const,
+              provider: 'Gemini',
+              model: geminiModelId,
+              text: result.response.text().trim(),
+            };
+          } catch (err) {
+            const msg = (err as Error).message?.slice(0, 200) ?? 'unknown';
+            this.logger.warn(`Gemini (parallel) failed: ${msg}`);
+            return {
+              status: 'failed' as const,
+              provider: 'Gemini',
+              model: geminiModelId,
+              error: msg,
+            };
+          }
+        })(),
+      );
+    }
+
+    // Groq
+    const groqKey = this.config.get<string>('GROQ_API_KEY');
+    if (groqKey) {
+      const groqModelId = 'llama-3.3-70b-versatile';
+      calls.push(
+        (async () => {
+          try {
+            const res = await fetch(
+              'https://api.groq.com/openai/v1/chat/completions',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${groqKey}`,
+                },
+                body: JSON.stringify({
+                  model: groqModelId,
+                  messages: [{ role: 'user', content: prompt }],
+                  temperature: 0.3,
+                  max_tokens: 8192,
+                }),
+              },
+            );
+            if (!res.ok)
+              throw new Error(
+                `Groq ${res.status}: ${(await res.text()).slice(0, 300)}`,
+              );
+            const json = await res.json();
+            const content = json.choices?.[0]?.message?.content;
+            if (!content) throw new Error('Groq returned empty response');
+            return {
+              status: 'ok' as const,
+              provider: 'Groq',
+              model: groqModelId,
+              text: content.trim(),
+            };
+          } catch (err) {
+            const msg = (err as Error).message?.slice(0, 200) ?? 'unknown';
+            this.logger.warn(`Groq (parallel) failed: ${msg}`);
+            return {
+              status: 'failed' as const,
+              provider: 'Groq',
+              model: groqModelId,
+              error: msg,
+            };
+          }
+        })(),
+      );
+    }
+
+    // OpenRouter — many models running in parallel. All share the same API key
+    // and ~200 RPD free quota; each is a separate "provider" name in our model
+    // so the UI can attribute and the user gets cross-validation when multiple
+    // succeed (graceful degradation if some glitch).
+    //
+    // Per-call timeout: free models on OpenRouter can hang for minutes — we
+    // cap each call at 90s so one slow model doesn't drag down the whole
+    // Promise.all response. Slow providers come back as `failed`.
+    const openRouterKey = this.config.get<string>('OPENROUTER_API_KEY');
+    const PROVIDER_TIMEOUT_MS = 90_000;
+    if (openRouterKey) {
+      const openRouterCall = async (
+        provider: string,
+        modelId: string,
+      ): Promise<
+        | { status: 'ok'; provider: string; model: string; text: string }
+        | { status: 'failed'; provider: string; model: string; error: string }
+      > => {
+        const ac = new AbortController();
+        const timeoutId = setTimeout(() => ac.abort(), PROVIDER_TIMEOUT_MS);
+        try {
+          const res = await fetch(
+            'https://openrouter.ai/api/v1/chat/completions',
+            {
+              method: 'POST',
+              signal: ac.signal,
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${openRouterKey}`,
+                'HTTP-Referer': 'https://tradedesk.app',
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.3,
+                max_tokens: 8192,
+              }),
+            },
+          );
+          if (!res.ok)
+            throw new Error(
+              `${provider} ${res.status}: ${(await res.text()).slice(0, 300)}`,
+            );
+          const json = await res.json();
+          const content = json.choices?.[0]?.message?.content;
+          if (!content) throw new Error(`${provider} returned empty response`);
+          return {
+            status: 'ok' as const,
+            provider,
+            model: modelId,
+            text: content.trim(),
+          };
+        } catch (err) {
+          const aborted = (err as Error).name === 'AbortError';
+          const msg = aborted
+            ? `${provider} timed out after ${PROVIDER_TIMEOUT_MS / 1000}s`
+            : ((err as Error).message?.slice(0, 200) ?? 'unknown');
+          this.logger.warn(`${provider} (parallel) failed: ${msg}`);
+          return {
+            status: 'failed' as const,
+            provider,
+            model: modelId,
+            error: msg,
+          };
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      // Curated set of free OpenRouter models — one model per family/company
+      // so the user gets genuine cross-validation rather than 5 Llama variants.
+      // All share the same ~200 RPD OpenRouter free quota, but at one daily
+      // cron run that's well within budget. Each gets its own distinct
+      // provider name so the UI can badge it independently.
+      // ─── Nemotron — original OpenRouter pick (kept under "OpenRouter" name
+      // for back-compat with existing tracker rows). NVIDIA, 120B params.
+      calls.push(
+        openRouterCall('OpenRouter', 'nvidia/nemotron-3-super-120b-a12b:free'),
+      );
+      // ─── Meta Llama 3.2 3B Instruct — small + fast + reliable.
+      calls.push(
+        openRouterCall('Llama', 'meta-llama/llama-3.2-3b-instruct:free'),
+      );
+      // ─── Google Gemma 3 27B — Google's open-weight instruction-tuned model.
+      calls.push(openRouterCall('Gemma', 'google/gemma-3-27b-it:free'));
+      // ─── Nous Hermes 3 (Llama 3.1 405B fine-tune) — strongest free instruct.
+      calls.push(
+        openRouterCall('Hermes', 'nousresearch/hermes-3-llama-3.1-405b:free'),
+      );
+      // ─── Alibaba Qwen3 80B (MoE) — distinct architecture, Chinese family.
+      calls.push(
+        openRouterCall('Qwen', 'qwen/qwen3-next-80b-a3b-instruct:free'),
+      );
+      // ─── OpenAI GPT-OSS 120B — OpenAI's open-weight release.
+      calls.push(openRouterCall('GPT-OSS', 'openai/gpt-oss-120b:free'));
+      // ─── Zhipu GLM 4.5 Air — independent Chinese reasoning model.
+      calls.push(openRouterCall('GLM', 'z-ai/glm-4.5-air:free'));
+    }
+
+    if (calls.length === 0) {
+      throw new Error('No AI providers configured for parallel chain');
+    }
+    return Promise.all(calls);
   }
 
   async analyzeStock(
@@ -991,43 +1232,85 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
     return risks;
   }
 
-  async generateWeeklyPicks(lang: 'en' | 'ar' = 'en'): Promise<{
+  async generateWeeklyPicks(
+    lang: 'en' | 'ar' = 'en',
+    asOfDate?: Date,
+  ): Promise<{
     generatedAt: string;
     expiresAt: string;
+    aiProvider: string; // representative (first ok provider) — kept for back-compat
+    aiModel: string; // representative (first ok provider) — kept for back-compat
     marketCondition: string;
-    picks: any[];
+    picks: any[]; // each pick is stamped with aiProvider + aiModel
     top3Summary: string;
     allocationAdvice: string;
+    providers: Array<
+      | {
+          status: 'ok';
+          provider: string;
+          model: string;
+          summary: string;
+          pickCount: number;
+        }
+      | { status: 'failed'; provider: string; model?: string; error: string }
+    >;
   }> {
     if (this.aiProviders.length === 0) {
       throw new Error('No AI providers available for weekly picks');
     }
 
-    // Fetch actual stock symbols + live prices so AI uses real data
-    const [allStocks, priceMap] = await Promise.all([
-      this.prisma.stock.findMany({
-        select: { symbol: true, name: true, sector: true },
-        orderBy: { symbol: 'asc' },
-      }),
-      this.redis.hgetall('market:prices'),
-    ]);
-    // Only include stocks with live prices, ultra-compact format
-    const stocksWithPrices: string[] = [];
-    for (const s of allStocks) {
-      const raw = priceMap[s.symbol];
-      if (!raw) continue;
-      try {
-        const p = JSON.parse(raw);
-        if (p.price != null) {
-          stocksWithPrices.push(`${s.symbol}:${p.price}`);
-        }
-      } catch {}
-    }
-    // Compact: just "SYMBOL:price" to minimize tokens
-    const stockList = stocksWithPrices.join(', ');
-    this.logger.log(`Weekly picks prompt includes ${stocksWithPrices.length} stocks with prices (${stockList.length} chars)`);
+    // Fetch actual stock symbols + prices.
+    //  - Live mode (asOfDate undefined): Redis snapshot of latest market prices.
+    //  - Backtest mode (asOfDate set): the most recent stock_price_history close
+    //    on or before asOfDate, so the AI sees only historical context.
+    const allStocks = await this.prisma.stock.findMany({
+      select: { symbol: true, name: true, sector: true },
+      orderBy: { symbol: 'asc' },
+    });
 
-    const today = new Date().toISOString().split('T')[0];
+    const stocksWithPrices: string[] = [];
+    if (asOfDate) {
+      const cutoff = new Date(asOfDate);
+      cutoff.setUTCHours(23, 59, 59, 999);
+      // Pull latest close per symbol on or before cutoff
+      const rows = await this.prisma.$queryRaw<
+        Array<{ symbol: string; price: number }>
+      >`
+        SELECT DISTINCT ON (symbol) symbol, price::float8 AS price
+        FROM stock_price_history
+        WHERE timestamp <= ${cutoff}
+        ORDER BY symbol, timestamp DESC
+      `;
+      const priceBySymbol = new Map(rows.map((r) => [r.symbol, r.price]));
+      for (const s of allStocks) {
+        const p = priceBySymbol.get(s.symbol);
+        if (p != null) stocksWithPrices.push(`${s.symbol}:${p}`);
+      }
+    } else {
+      const priceMap = await this.redis.hgetall('market:prices');
+      for (const s of allStocks) {
+        const raw = priceMap[s.symbol];
+        if (!raw) continue;
+        try {
+          const p = JSON.parse(raw);
+          if (p.price != null) stocksWithPrices.push(`${s.symbol}:${p.price}`);
+        } catch {}
+      }
+    }
+    const stockList = stocksWithPrices.join(', ');
+    this.logger.log(
+      `Weekly picks prompt includes ${stocksWithPrices.length} stocks with prices${
+        asOfDate ? ` (as of ${asOfDate.toISOString().slice(0, 10)})` : ''
+      } (${stockList.length} chars)`,
+    );
+
+    const today = (asOfDate ?? new Date()).toISOString().split('T')[0];
+
+    // Daily multi-provider mode: each AI provider returns 3 picks instead of one
+    // model returning 10. We then merge the 3+3+3 = 9 results and stamp every pick
+    // with its source provider/model so the UI can attribute and the user gets
+    // cross-validation across models.
+    const PICKS_PER_PROVIDER = 3;
 
     const prompt = `You are a global technical analyst specializing in the Egyptian Stock Exchange (EGX).
 
@@ -1045,11 +1328,12 @@ To conduct a comprehensive and in-depth technical analysis of the Egyptian stock
 ## Date and Context:
 Current Date: ${today}
 
-Analyze the top 10 EGX stocks meeting ALL criteria above.
+Analyze and return your top ${PICKS_PER_PROVIDER} EGX stocks meeting ALL criteria above. Other AI models are independently picking their own ${PICKS_PER_PROVIDER}; the user will see all combined picks side-by-side, so be opinionated about *your* highest-conviction names.
 
 You MUST respond ONLY with valid JSON (no markdown, no code blocks) in this exact format:
 {
   "marketCondition": "Bull|Bear|Neutral",
+  "providerSummary": "One-sentence rationale for your ${PICKS_PER_PROVIDER} picks (what theme connects them)",
   "picks": [
     {
       "rank": 1,
@@ -1079,13 +1363,11 @@ You MUST respond ONLY with valid JSON (no markdown, no code blocks) in this exac
       "catalysts": "Fundamental catalysts supporting the trend",
       "risks": "Key risks to consider"
     }
-  ],
-  "top3Summary": "Brief justification for the top 3 stocks for immediate entry",
-  "allocationAdvice": "Portfolio management recommendation with suggested capital allocation"
+  ]
 }
 
 IMPORTANT:
-- Return exactly 10 stocks ranked by opportunity strength
+- Return exactly ${PICKS_PER_PROVIDER} stocks ranked by opportunity strength
 - All prices must be realistic current EGP prices for EGX stocks
 - Confidence is a number from 1 to 10
 - Only include Sharia-compliant stocks (no banks, alcohol, tobacco, interest-based businesses)
@@ -1095,10 +1377,199 @@ IMPORTANT:
 
 Available EGX stocks with current prices:
 ${stockList}
-${lang === 'ar' ? `- IMPORTANT: All text values (company, sector, status, pattern, catalysts, risks, top3Summary, allocationAdvice, macd, volume, rsiStatus, timeframe) MUST be written in Arabic. Only keep symbol names and JSON keys in English.` : ''}`;
+${lang === 'ar' ? `- IMPORTANT: All text values (company, sector, status, pattern, catalysts, risks, providerSummary, macd, volume, rsiStatus, timeframe) MUST be written in Arabic. Only keep symbol names and JSON keys in English.` : ''}`;
 
-    const { text: rawText, provider } = await this.callAIChainLong(prompt);
-    this.logger.log(`Weekly picks generated by ${provider}`);
+    // Fan out to all configured providers in parallel
+    const providerResults = await this.callAIChainParallel(prompt);
+    this.logger.log(
+      `Weekly picks: ${providerResults.length} providers responded — ` +
+        providerResults.map((r) => `${r.provider}=${r.status}`).join(', '),
+    );
+
+    // Parse each successful provider's JSON, validate symbols, and stamp each pick
+    // with its source provider/model. Failed providers are recorded so the UI can
+    // surface partial degradation.
+    const allValidStocks = await this.prisma.stock.findMany({
+      select: { symbol: true },
+    });
+    const existingSymbols = new Set(allValidStocks.map((s) => s.symbol));
+
+    const allPicks: any[] = [];
+    const providerSummaries: string[] = [];
+    const marketConditions: string[] = [];
+    const providersOut: Array<
+      | {
+          status: 'ok';
+          provider: string;
+          model: string;
+          summary: string;
+          pickCount: number;
+        }
+      | { status: 'failed'; provider: string; model?: string; error: string }
+    > = [];
+    let firstOk: { provider: string; model: string } | null = null;
+
+    for (const r of providerResults) {
+      if (r.status === 'failed') {
+        providersOut.push({
+          status: 'failed',
+          provider: r.provider,
+          model: r.model,
+          error: r.error,
+        });
+        continue;
+      }
+      try {
+        const cleaned = r.text
+          .replace(/^```json?\s*/s, '')
+          .replace(/\s*```\s*$/s, '')
+          .trim();
+        const parsed = JSON.parse(cleaned);
+        const rawPicks: any[] = Array.isArray(parsed.picks)
+          ? parsed.picks.slice(0, PICKS_PER_PROVIDER)
+          : [];
+        // Validate symbols against the DB and stamp each pick with its AI source
+        const validated = rawPicks
+          .filter((p) => existingSymbols.has(String(p.symbol).toUpperCase()))
+          .map((p) => ({ ...p, aiProvider: r.provider, aiModel: r.model }));
+        if (validated.length < rawPicks.length) {
+          this.logger.warn(
+            `Filtered out ${rawPicks.length - validated.length} non-existent stocks from ${r.provider} picks`,
+          );
+        }
+        allPicks.push(...validated);
+        providerSummaries.push(
+          `${r.provider}: ${parsed.providerSummary ?? ''}`.trim(),
+        );
+        if (parsed.marketCondition)
+          marketConditions.push(String(parsed.marketCondition));
+        if (!firstOk) firstOk = { provider: r.provider, model: r.model };
+        providersOut.push({
+          status: 'ok',
+          provider: r.provider,
+          model: r.model,
+          summary: String(parsed.providerSummary ?? ''),
+          pickCount: validated.length,
+        });
+      } catch (err) {
+        const msg = (err as Error).message?.slice(0, 200) ?? 'parse error';
+        this.logger.warn(`Failed to parse ${r.provider} response: ${msg}`);
+        providersOut.push({
+          status: 'failed',
+          provider: r.provider,
+          model: r.model,
+          error: `parse: ${msg}`,
+        });
+      }
+    }
+
+    if (allPicks.length === 0) {
+      throw new Error('All AI providers failed for weekly picks');
+    }
+
+    // Sort merged picks by confidence DESC; tie-break on provider order for
+    // determinism. Order: managed providers first (Gemini, Groq), then OpenRouter
+    // models in size/quality order. Re-rank 1..N after sort.
+    const PROVIDER_ORDER: Record<string, number> = {
+      Gemini: 0,
+      Groq: 1,
+      Hermes: 2, // Llama 3.1 405B fine-tune — biggest free instruct
+      'GPT-OSS': 3, // OpenAI 120B
+      OpenRouter: 4, // Nemotron 120B
+      Qwen: 5, // Qwen3 80B MoE
+      Gemma: 6, // Google 27B
+      GLM: 7, // Zhipu
+      Llama: 8, // Meta 3B
+    };
+    allPicks.sort((a, b) => {
+      const ca = Number(a.confidence ?? 0);
+      const cb = Number(b.confidence ?? 0);
+      if (cb !== ca) return cb - ca;
+      return (
+        (PROVIDER_ORDER[a.aiProvider] ?? 99) -
+        (PROVIDER_ORDER[b.aiProvider] ?? 99)
+      );
+    });
+    allPicks.forEach((p, i) => {
+      p.rank = i + 1;
+    });
+
+    // Market condition: majority vote across providers (default Neutral)
+    const condCounts: Record<string, number> = {};
+    for (const c of marketConditions) condCounts[c] = (condCounts[c] ?? 0) + 1;
+    const marketCondition =
+      Object.entries(condCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+      'Neutral';
+
+    const generatedAt = asOfDate ?? new Date();
+    // Daily mode — payload expires after 24h
+    const expiresAt = new Date(generatedAt.getTime() + 24 * 60 * 60 * 1000);
+
+    return {
+      generatedAt: generatedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      // Back-compat top-level fields: representative provider (first ok)
+      aiProvider: firstOk?.provider ?? 'Multi',
+      aiModel: firstOk?.model ?? 'multi-model',
+      marketCondition,
+      picks: allPicks,
+      // Synthesise top3Summary from each provider's summary so the hero banner
+      // still has copy. allocationAdvice is no longer asked of the AI in daily
+      // mode (3-pick-per-provider doesn't carry enough context for it).
+      top3Summary: providerSummaries.filter(Boolean).join(' · '),
+      allocationAdvice: '',
+      providers: providersOut,
+    };
+  }
+
+  /**
+   * Translate an existing weekly-picks payload to Arabic, preserving all symbols
+   * and numeric fields. Used by the tracker so admins see Arabic text on the
+   * SAME picks (rather than getting a fresh AR generation with different stocks).
+   */
+  async translateWeeklyPicksToArabic(enPayload: {
+    marketCondition: string;
+    picks: any[];
+    top3Summary: string;
+    allocationAdvice: string;
+  }): Promise<{
+    aiProvider: string;
+    aiModel: string;
+    marketCondition: string;
+    picks: any[];
+    top3Summary: string;
+    allocationAdvice: string;
+  }> {
+    if (this.aiProviders.length === 0) {
+      throw new Error('No AI providers available for translation');
+    }
+
+    const prompt = `Translate the following weekly stock recommendations JSON to Arabic.
+
+CRITICAL RULES:
+- Preserve ALL symbol values, JSON keys, and numeric fields EXACTLY.
+- Translate ONLY these text fields to Arabic: company, sector, status, pattern, indicators.rsiStatus, indicators.macd, indicators.volume, timeframe, catalysts, risks, top3Summary, allocationAdvice, trend, marketCondition.
+- Do not invent picks. Output the same number of picks as input, in the same order, with the same ranks and symbols.
+- Respond ONLY with valid JSON (no markdown, no code blocks).
+
+Input JSON:
+${JSON.stringify({
+  marketCondition: enPayload.marketCondition,
+  picks: enPayload.picks,
+  top3Summary: enPayload.top3Summary,
+  allocationAdvice: enPayload.allocationAdvice,
+})}
+
+Output JSON shape: { "marketCondition": "...", "picks": [...], "top3Summary": "...", "allocationAdvice": "..." }`;
+
+    const {
+      text: rawText,
+      provider,
+      model: aiModel,
+    } = await this.callAIChainLong(prompt);
+    this.logger.log(
+      `Weekly picks translated to Arabic by ${provider} (${aiModel})`,
+    );
 
     const jsonStr = rawText
       .replace(/^```json?\s*/s, '')
@@ -1106,34 +1577,11 @@ ${lang === 'ar' ? `- IMPORTANT: All text values (company, sector, status, patter
       .trim();
     const parsed = JSON.parse(jsonStr);
 
-    // Validate picks against database — remove stocks that don't exist
-    let picks = Array.isArray(parsed.picks) ? parsed.picks.slice(0, 10) : [];
-    if (picks.length > 0) {
-      const symbols = picks.map((p: any) => String(p.symbol).toUpperCase());
-      const existingStocks = await this.prisma.stock.findMany({
-        where: { symbol: { in: symbols } },
-        select: { symbol: true },
-      });
-      const existingSet = new Set(existingStocks.map((s) => s.symbol));
-      const before = picks.length;
-      picks = picks.filter((p: any) => existingSet.has(String(p.symbol).toUpperCase()));
-      if (picks.length < before) {
-        this.logger.warn(
-          `Filtered out ${before - picks.length} non-existent stocks from weekly picks`,
-        );
-      }
-      // Re-rank after filtering
-      picks.forEach((p: any, i: number) => { p.rank = i + 1; });
-    }
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
     return {
-      generatedAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-      marketCondition: parsed.marketCondition ?? 'Neutral',
-      picks,
+      aiProvider: provider,
+      aiModel,
+      marketCondition: parsed.marketCondition ?? enPayload.marketCondition,
+      picks: Array.isArray(parsed.picks) ? parsed.picks : enPayload.picks,
       top3Summary: String(parsed.top3Summary ?? ''),
       allocationAdvice: String(parsed.allocationAdvice ?? ''),
     };

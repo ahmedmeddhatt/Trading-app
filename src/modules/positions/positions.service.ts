@@ -13,12 +13,17 @@ export class PositionsService implements OnModuleInit {
     // One-time fix: set assetType=GOLD for positions/realized_gains where symbol starts with GOLD_
     try {
       const [posResult, rgResult, txResult] = await Promise.all([
-        this.prisma.$executeRaw`UPDATE positions SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
-        this.prisma.$executeRaw`UPDATE realized_gains SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
-        this.prisma.$executeRaw`UPDATE transactions SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+        this.prisma
+          .$executeRaw`UPDATE positions SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+        this.prisma
+          .$executeRaw`UPDATE realized_gains SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+        this.prisma
+          .$executeRaw`UPDATE transactions SET asset_type = 'GOLD' WHERE symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
       ]);
       if (posResult > 0 || rgResult > 0 || txResult > 0) {
-        this.logger.log(`Data fix: updated ${posResult} positions, ${rgResult} realized_gains, ${txResult} transactions to assetType=GOLD`);
+        this.logger.log(
+          `Data fix: updated ${posResult} positions, ${rgResult} realized_gains, ${txResult} transactions to assetType=GOLD`,
+        );
       }
     } catch (e) {
       this.logger.warn(`Data fix skipped: ${(e as Error).message}`);

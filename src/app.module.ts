@@ -15,6 +15,7 @@ import { StocksModule } from './modules/stocks/stocks.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { GoldModule } from './modules/gold/gold.module';
+import { RecommendationsTrackerModule } from './modules/recommendations-tracker/tracker.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
 @Module({
@@ -49,6 +50,7 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     StocksModule,
     AdminModule,
     GoldModule,
+    RecommendationsTrackerModule,
   ],
 })
 export class AppModule implements NestModule {

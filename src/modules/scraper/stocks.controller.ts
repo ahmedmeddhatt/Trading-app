@@ -10,6 +10,7 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { StockStoreService } from './stock-store.service';
 import { RedisWriterService } from './redis-writer.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -141,16 +142,100 @@ export class StocksController {
     };
   }
 
-  @Get('weekly-picks')
-  async weeklyPicks(@Query('lang') lang?: string, @Query('refresh') refresh?: string) {
-    const language = lang === 'ar' ? 'ar' : 'en';
-    const cacheKey = `ai:weekly-picks:${language}`;
+  @Post('weekly-picks/translate-ar')
+  async translateWeeklyPicksToAr() {
+    // Find the most recent EN payload (Redis cache first, fall back to DB log).
+    const enCacheKey = 'ai:weekly-picks:en';
+    let enPayload: any = null;
+    try {
+      const cached = await this.redis.get(enCacheKey);
+      if (cached) enPayload = JSON.parse(cached);
+    } catch {
+      /* fall through to DB lookup below */
+    }
 
-    if (refresh !== 'true') {
+    if (!enPayload) {
+      const log = await this.prisma.weeklyPicksLog.findFirst({
+        where: { lang: 'en' },
+        orderBy: { generatedAt: 'desc' },
+      });
+      if (!log)
+        throw new BadRequestException(
+          'No EN weekly-picks payload to translate',
+        );
+      enPayload = log.payload;
+    }
+
+    const translated =
+      await this.geminiAnalysis.translateWeeklyPicksToArabic(enPayload);
+    const arPayload = {
+      generatedAt: enPayload.generatedAt,
+      expiresAt: enPayload.expiresAt,
+      aiProvider: translated.aiProvider,
+      aiModel: translated.aiModel,
+      marketCondition: translated.marketCondition,
+      picks: translated.picks,
+      top3Summary: translated.top3Summary,
+      allocationAdvice: translated.allocationAdvice,
+      // Forward provider breakdown if present on the EN payload so AR consumers see the same shape
+      providers: (enPayload as { providers?: unknown }).providers,
+    };
+
+    await this.prisma.weeklyPicksLog
+      .create({
+        data: {
+          generatedAt: new Date(arPayload.generatedAt),
+          expiresAt: new Date(arPayload.expiresAt),
+          lang: 'ar',
+          aiProvider: arPayload.aiProvider,
+          aiModel: arPayload.aiModel,
+          marketCondition: arPayload.marketCondition,
+          payload: arPayload as unknown as Prisma.InputJsonValue,
+        },
+      })
+      .catch((err) =>
+        this.logger.warn(
+          `AR translation log write failed: ${(err as Error).message}`,
+        ),
+      );
+
+    // Update Redis cache so users in AR mode see translated content immediately.
+    const today = this.cairoCalendarDate(new Date());
+    const arJson = JSON.stringify(arPayload);
+    await this.redis
+      .set(`ai:daily-picks:ar:${today}`, arJson, 'EX', 36 * 60 * 60)
+      .catch(() => {});
+    await this.redis.set('ai:daily-picks:ar:last-good', arJson).catch(() => {});
+
+    return arPayload;
+  }
+
+  @Get('weekly-picks')
+  async weeklyPicks(
+    @Query('lang') lang?: string,
+    @Query('refresh') refresh?: string,
+    @Query('asOfDate') asOfDate?: string,
+  ) {
+    const language = lang === 'ar' ? 'ar' : 'en';
+    // Daily mode: cache key is suffixed with the Cairo calendar date so cron
+    // refreshes naturally produce a new key each morning. last-good is shared
+    // across days for graceful degradation.
+    const today = this.cairoCalendarDate(new Date());
+    const cacheKey = `ai:daily-picks:${language}:${today}`;
+    const lastGoodKey = `ai:daily-picks:${language}:last-good`;
+    const isBacktest = !!asOfDate;
+    const asOfDateObj = asOfDate ? new Date(asOfDate) : undefined;
+    if (asOfDate && Number.isNaN(asOfDateObj?.getTime())) {
+      throw new BadRequestException('Invalid asOfDate (expected ISO date)');
+    }
+
+    // Backtest mode bypasses the Redis cache entirely so historical generations
+    // don't pollute / overwrite the live cache used by the public dashboard.
+    if (!isBacktest && refresh !== 'true') {
       try {
         const cached = await this.redis.get(cacheKey);
         if (cached) {
-          const parsed = JSON.parse(cached);
+          const parsed = JSON.parse(cached) as { expiresAt?: string };
           if (parsed.expiresAt && new Date(parsed.expiresAt) > new Date()) {
             this.logger.log(`Returning cached weekly picks (${language})`);
             return parsed;
@@ -159,32 +244,129 @@ export class StocksController {
       } catch (err) {
         this.logger.warn(`Cache read failed: ${(err as Error).message}`);
       }
-    } else {
+
+      // Cache miss — Redis may have been wiped (we treat the DB as the durable
+      // source of truth). Try rehydrating from the most recent unexpired
+      // WeeklyPicksLog row for this language before paying for a fresh AI call.
+      try {
+        const recent = await this.prisma.weeklyPicksLog.findFirst({
+          where: { lang: language, expiresAt: { gt: new Date() } },
+          orderBy: { generatedAt: 'desc' },
+        });
+        if (recent?.payload) {
+          const json = JSON.stringify(recent.payload);
+          this.logger.log(
+            `Rehydrating weekly picks cache from DB (${language})`,
+          );
+          await this.redis
+            .set(cacheKey, json, 'EX', 36 * 60 * 60)
+            .catch(() => {});
+          await this.redis.set(lastGoodKey, json).catch(() => {});
+          return recent.payload;
+        }
+      } catch (err) {
+        this.logger.warn(`DB rehydrate failed: ${(err as Error).message}`);
+      }
+    } else if (!isBacktest) {
       this.logger.log(`Force refresh requested for weekly picks (${language})`);
-      await this.redis.del(cacheKey, `${cacheKey}:last-good`).catch(() => {});
+      await this.redis.del(cacheKey, lastGoodKey).catch(() => {});
     }
 
     try {
-      this.logger.log(`Generating fresh weekly picks via AI (${language})...`);
-      const result = await this.geminiAnalysis.generateWeeklyPicks(language);
-      const json = JSON.stringify(result);
-      await this.redis.set(cacheKey, json).catch(() => {});
-      await this.redis.set(`${cacheKey}:last-good`, json).catch(() => {});
+      this.logger.log(
+        `Generating ${isBacktest ? 'BACKTEST' : 'fresh'} weekly picks via AI (${language}${isBacktest ? `, asOf=${asOfDate}` : ''})...`,
+      );
+      const result = await this.geminiAnalysis.generateWeeklyPicks(
+        language,
+        asOfDateObj,
+      );
+
+      // Persist every successful generation to the durable log (independent of Redis).
+      // The recommendations-tracker module reads from this table — never from Redis.
+      await this.prisma.weeklyPicksLog
+        .create({
+          data: {
+            generatedAt: new Date(result.generatedAt),
+            expiresAt: new Date(result.expiresAt),
+            lang: language,
+            aiProvider: result.aiProvider,
+            aiModel: result.aiModel,
+            marketCondition: result.marketCondition,
+            payload: result as unknown as Prisma.InputJsonValue,
+          },
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `weekly-picks-log write failed: ${(err as Error).message}`,
+          ),
+        );
+
+      // Don't pollute Redis cache with backtest payloads.
+      if (!isBacktest) {
+        const json = JSON.stringify(result);
+        // Day-keyed payload expires in 36h (slightly longer than a day so the
+        // current key remains readable in the small window before tomorrow's
+        // cron has run). last-good is unbounded for outage fallback.
+        await this.redis
+          .set(cacheKey, json, 'EX', 36 * 60 * 60)
+          .catch(() => {});
+        await this.redis.set(lastGoodKey, json).catch(() => {});
+      }
       return result;
     } catch (err) {
-      this.logger.error(`Weekly picks generation failed: ${(err as Error).message}`);
-      // Try last-good fallback
+      this.logger.error(
+        `Weekly picks generation failed: ${(err as Error).message}`,
+      );
+      // For backtests we MUST NOT return last-good fallback — that's a fresh
+      // payload the caller didn't ask for, and would silently corrupt the
+      // backtest's per-week log entries. Surface the error instead.
+      if (isBacktest) {
+        throw new InternalServerErrorException(
+          `Backtest generation failed (asOf=${asOfDate}): ${(err as Error).message}`,
+        );
+      }
+      // Live mode: degrade gracefully to last-good cache so the dashboard
+      // doesn't go blank during transient AI outages.
       try {
-        const fallback = await this.redis.get(`${cacheKey}:last-good`);
+        const fallback = await this.redis.get(lastGoodKey);
         if (fallback) {
-          this.logger.log('Returning last-good fallback');
-          return JSON.parse(fallback);
+          this.logger.log('Returning last-good fallback (Redis)');
+          return JSON.parse(fallback) as Record<string, unknown>;
         }
-      } catch {}
+      } catch {
+        /* swallow — we'll try the next fallback */
+      }
+      // Redis-wipe resilience: if last-good is also gone (e.g. monthly Redis
+      // rotation), use the most recent WeeklyPicksLog row from Postgres. The
+      // payload may be a few hours stale but it beats a blank dashboard.
+      try {
+        const recent = await this.prisma.weeklyPicksLog.findFirst({
+          where: { lang: language },
+          orderBy: { generatedAt: 'desc' },
+        });
+        if (recent?.payload) {
+          this.logger.log('Returning last-good fallback (DB)');
+          // Opportunistically reseed Redis so the next request is a cache hit.
+          await this.redis
+            .set(lastGoodKey, JSON.stringify(recent.payload))
+            .catch(() => {});
+          return recent.payload;
+        }
+      } catch {
+        /* swallow — we'll try the next fallback */
+      }
       throw new InternalServerErrorException(
         `Failed to generate weekly picks: ${(err as Error).message}`,
       );
     }
+  }
+
+  /** Returns YYYY-MM-DD for the Cairo calendar date of the given moment. */
+  private cairoCalendarDate(now: Date): string {
+    // Cairo is UTC+2 year-round (no DST). Shift UTC by +2h to get Cairo wall-clock,
+    // then take the date portion.
+    const cairoMs = now.getTime() + 2 * 60 * 60 * 1000;
+    return new Date(cairoMs).toISOString().slice(0, 10);
   }
 
   @Get()
@@ -301,13 +483,14 @@ export class StocksController {
     }));
 
     // Check if our DB covers the requested range
-    const earliestDb = dbPoints.length
-      ? new Date(dbPoints[0].timestamp)
-      : null;
+    const earliestDb = dbPoints.length ? new Date(dbPoints[0].timestamp) : null;
     let externalPoints: typeof dbPoints = [];
 
     // If DB doesn't cover the start of the requested range, fill from Yahoo Finance
-    if (!earliestDb || earliestDb.getTime() - fromDate.getTime() > 2 * 86_400_000) {
+    if (
+      !earliestDb ||
+      earliestDb.getTime() - fromDate.getTime() > 2 * 86_400_000
+    ) {
       const gapEnd = earliestDb
         ? new Date(earliestDb.getTime() - 86_400_000)
         : toDate;
@@ -336,17 +519,27 @@ export class StocksController {
     // Append current live price as latest data point
     if (priceRaw) {
       try {
-        const p = JSON.parse(priceRaw) as { price?: number; timestamp?: string | number };
+        const p = JSON.parse(priceRaw) as {
+          price?: number;
+          timestamp?: string | number;
+        };
         if (p.price != null) {
           const liveTs = p.timestamp
             ? new Date(p.timestamp as number).toISOString()
             : new Date().toISOString();
-          const lastTs = merged.length ? merged[merged.length - 1].timestamp : null;
-          if (!lastTs || new Date(liveTs).getTime() - new Date(lastTs).getTime() > 60_000) {
+          const lastTs = merged.length
+            ? merged[merged.length - 1].timestamp
+            : null;
+          if (
+            !lastTs ||
+            new Date(liveTs).getTime() - new Date(lastTs).getTime() > 60_000
+          ) {
             merged.push({ symbol: sym, timestamp: liveTs, price: p.price });
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
 
     return merged;
@@ -382,11 +575,16 @@ export class StocksController {
       };
 
       const result = json.chart?.result?.[0];
-      if (!result?.timestamp || !result.indicators?.quote?.[0]?.close) return [];
+      if (!result?.timestamp || !result.indicators?.quote?.[0]?.close)
+        return [];
 
       const timestamps = result.timestamp;
       const closes = result.indicators.quote[0].close;
-      const points: Array<{ symbol: string; timestamp: string; price: number }> = [];
+      const points: Array<{
+        symbol: string;
+        timestamp: string;
+        price: number;
+      }> = [];
 
       for (let i = 0; i < timestamps.length; i++) {
         const price = closes[i];

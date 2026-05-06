@@ -161,3 +161,124 @@ enum AssetType {
   STOCK
   GOLD
 }
+
+// ─── Recommendations Tracker ──────────────────────────────────────────────
+
+model WeeklyPicksLog {
+  id              String   @id @default(uuid())
+  generatedAt     DateTime @map("generated_at")
+  expiresAt       DateTime @map("expires_at")
+  lang            String
+  aiProvider      String   @map("ai_provider")
+  aiModel         String   @map("ai_model")
+  marketCondition String   @map("market_condition")
+  payload         Json
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([generatedAt])
+  @@index([lang, generatedAt])
+  @@index([aiProvider, generatedAt])
+  @@map("weekly_picks_log")
+}
+
+model RecommendationSnapshot {
+  id               String   @id @default(uuid())
+  // Calendar date the snapshot represents (Cairo time). Renamed from weekStartDate
+  // when the system shifted from weekly to daily generation; existing weekly rows
+  // keep their original date with kind='weekly', new rows use kind='daily'.
+  snapshotDate     DateTime @map("snapshot_date") @db.Date
+  kind             String   @default("daily")     // 'daily' | 'weekly'
+  sourceLogId      String?  @map("source_log_id")
+  generatedAt      DateTime @map("generated_at")
+  expiresAt        DateTime @map("expires_at")
+  aiProvider       String   @map("ai_provider")
+  aiModel          String   @map("ai_model")
+  marketCondition  String   @map("market_condition")
+  top3Summary      String   @map("top3_summary")      @db.Text
+  allocationAdvice String   @map("allocation_advice") @db.Text
+  payloadAr        Json?    @map("payload_ar")        // Full AR-language payload, for serving Arabic UI
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  picks TrackedPick[]
+
+  @@unique([snapshotDate, kind])
+  @@index([snapshotDate])
+  @@index([kind, snapshotDate])
+  @@index([aiProvider, snapshotDate])
+  @@map("recommendation_snapshots")
+}
+
+model TrackedPick {
+  id           String  @id @default(uuid())
+  snapshotId   String  @map("snapshot_id")
+  // AI provider that produced this specific pick — needed for daily multi-provider
+  // mode where each snapshot bundles picks from Gemini, Groq, and OpenRouter.
+  aiProvider   String  @map("ai_provider")
+  aiModel      String  @map("ai_model")
+  rank         Int
+  symbol       String
+  company      String
+  sector       String
+  currentPrice Decimal @map("current_price") @db.Decimal(18, 4)
+  status       String
+  supportS1    Decimal @map("support_s1")     @db.Decimal(18, 4)
+  supportS2    Decimal @map("support_s2")     @db.Decimal(18, 4)
+  resistanceR1 Decimal @map("resistance_r1")  @db.Decimal(18, 4)
+  resistanceR2 Decimal @map("resistance_r2")  @db.Decimal(18, 4)
+  trend        String
+  pattern      String?
+  rsi          Decimal @db.Decimal(8, 2)
+  rsiStatus    String  @map("rsi_status")
+  macd         String
+  volume       String
+  ma20         Decimal @db.Decimal(18, 4)
+  ma50         Decimal @db.Decimal(18, 4)
+  entry        Decimal @db.Decimal(18, 4)
+  targetT1     Decimal @map("target_t1")  @db.Decimal(18, 4)
+  targetT2     Decimal @map("target_t2")  @db.Decimal(18, 4)
+  stopLoss     Decimal @map("stop_loss")  @db.Decimal(18, 4)
+  riskReward   String  @map("risk_reward")
+  timeframe    String
+  confidence   Int
+  catalysts    String  @db.Text
+  risks        String  @db.Text
+
+  performance PickPerformance?
+
+  snapshot RecommendationSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+  @@index([symbol])
+  @@index([aiProvider, snapshotId])
+  @@map("tracked_picks")
+}
+
+model PickPerformance {
+  pickId          String    @id @map("pick_id")
+  status          String
+  isClosed        Boolean   @default(false) @map("is_closed")
+  entryHit        Boolean   @default(false) @map("entry_hit")
+  entryHitAt      DateTime? @map("entry_hit_at")
+  t1Hit           Boolean   @default(false) @map("t1_hit")
+  t1HitAt         DateTime? @map("t1_hit_at")
+  t2Hit           Boolean   @default(false) @map("t2_hit")
+  t2HitAt         DateTime? @map("t2_hit_at")
+  stopHit         Boolean   @default(false) @map("stop_hit")
+  stopHitAt       DateTime? @map("stop_hit_at")
+  latestPrice     Decimal?  @map("latest_price") @db.Decimal(18, 4)
+  latestPriceAt   DateTime? @map("latest_price_at")
+  peakPrice       Decimal?  @map("peak_price")   @db.Decimal(18, 4)
+  troughPrice     Decimal?  @map("trough_price") @db.Decimal(18, 4)
+  returnPct       Decimal?  @map("return_pct")   @db.Decimal(8, 4)
+  daysToT1        Int?      @map("days_to_t1")
+  daysToT2        Int?      @map("days_to_t2")
+  daysToStop      Int?      @map("days_to_stop")
+  evaluationCount Int       @default(0) @map("evaluation_count")
+  lastEvaluatedAt DateTime  @default(now()) @updatedAt @map("last_evaluated_at")
+
+  pick TrackedPick @relation(fields: [pickId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([isClosed])
+  @@map("pick_performance")
+}

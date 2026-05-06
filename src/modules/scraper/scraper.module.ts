@@ -11,6 +11,7 @@ import { NewsScraperService } from './services/news-scraper.service';
 import { GeminiAnalysisService } from './services/gemini-analysis.service';
 import { GoldScraperService } from './services/gold-scraper.service';
 import { GoldAnalysisService } from './services/gold-analysis.service';
+import { DailyPicksScheduler } from './daily-picks.scheduler';
 
 import { StocksController } from './stocks.controller';
 
@@ -29,6 +30,7 @@ import { StocksController } from './stocks.controller';
     GeminiAnalysisService,
     GoldScraperService,
     GoldAnalysisService,
+    DailyPicksScheduler,
   ],
   exports: [
     RedisWriterService,

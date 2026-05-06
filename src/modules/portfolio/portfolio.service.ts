@@ -1476,7 +1476,12 @@ export class PortfolioService {
 
     // If still < 2 points, fall back to transaction-based timeline
     if (timeline.length < 2) {
-      const txTimeline = await this.buildTransactionTimeline(userId, from, to, assetType);
+      const txTimeline = await this.buildTransactionTimeline(
+        userId,
+        from,
+        to,
+        assetType,
+      );
       if (txTimeline.length > 0) {
         const merged = [...timeline, ...txTimeline].sort((a, b) =>
           a.timestamp.localeCompare(b.timestamp),
@@ -1880,10 +1885,19 @@ export class PortfolioService {
 
   async fixAssetTypes(userId: string) {
     const [txResult, posResult, rgResult] = await Promise.all([
-      this.prisma.$executeRaw`UPDATE transactions SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
-      this.prisma.$executeRaw`UPDATE positions SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
-      this.prisma.$executeRaw`UPDATE realized_gains SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+      this.prisma
+        .$executeRaw`UPDATE transactions SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+      this.prisma
+        .$executeRaw`UPDATE positions SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
+      this.prisma
+        .$executeRaw`UPDATE realized_gains SET asset_type = 'GOLD' WHERE user_id = ${userId} AND symbol LIKE 'GOLD_%' AND asset_type = 'STOCK'`,
     ]);
-    return { fixed: { transactions: Number(txResult), positions: Number(posResult), realizedGains: Number(rgResult) } };
+    return {
+      fixed: {
+        transactions: Number(txResult),
+        positions: Number(posResult),
+        realizedGains: Number(rgResult),
+      },
+    };
   }
 }

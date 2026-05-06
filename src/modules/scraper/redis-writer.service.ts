@@ -100,9 +100,33 @@ export class RedisWriterService implements OnModuleInit, OnModuleDestroy {
     await this.client.publish(channel, message);
   }
 
-  async set(key: string, value: string): Promise<void> {
+  async set(key: string, value: string): Promise<void>;
+  async set(
+    key: string,
+    value: string,
+    expiryMode: 'EX',
+    ttlSeconds: number,
+  ): Promise<void>;
+  async set(
+    key: string,
+    value: string,
+    expiryMode: 'PX',
+    ttlMillis: number,
+  ): Promise<void>;
+  async set(
+    key: string,
+    value: string,
+    expiryMode?: 'EX' | 'PX',
+    ttl?: number,
+  ): Promise<void> {
     this.monitor.increment('SET');
-    await this.client.set(key, value);
+    if (expiryMode === 'EX' && ttl != null) {
+      await this.client.set(key, value, 'EX', ttl);
+    } else if (expiryMode === 'PX' && ttl != null) {
+      await this.client.set(key, value, 'PX', ttl);
+    } else {
+      await this.client.set(key, value);
+    }
   }
 
   async hget(key: string, field: string): Promise<string | null> {
